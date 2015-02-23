@@ -1,4 +1,5 @@
 #include <caf/all.hpp>
+#include "vast/detail/caf_profiling_coordinator.h"
 #include "vast.h"
 
 int main(int argc, char *argv[])
@@ -49,15 +50,24 @@ int main(int argc, char *argv[])
   if (auto t = cfg->as<size_t>("caf.threads"))
     threads = *t;
 
-  auto throughput = std::numeric_limits<size_t>::max();
+  auto thruput = std::numeric_limits<size_t>::max();
   if (auto t = cfg->as<size_t>("caf.throughput"))
-    throughput = *t;
+    thruput = *t;
 
-  caf::set_scheduler<>(threads, throughput);
+  using profiling_coordinator =
+    vast::detail::caf_profiling_coordinator<
+      vast::detail::profiled_work_stealing
+    >;
+  if (cfg->check("profiler.caf"))
+    caf::set_scheduler(
+      new profiling_coordinator{(log_dir / "caf.log").str(), threads, thruput});
+  else
+    caf::set_scheduler<>(threads, thruput);
+
   VAST_VERBOSE("set scheduler threads to", threads);
   VAST_VERBOSE("set scheduler maximum throughput to",
-               (throughput == std::numeric_limits<size_t>::max()
-                ? "unlimited" : std::to_string(throughput)));
+               (thruput == std::numeric_limits<size_t>::max()
+                ? "unlimited" : std::to_string(thruput)));
 
   auto program = caf::spawn<vast::program>(std::move(*cfg));
   caf::scoped_actor self;
