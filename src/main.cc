@@ -1,5 +1,5 @@
 #include <caf/all.hpp>
-#include "vast/detail/caf_profiling_coordinator.h"
+#include <caf/scheduler/profiled_coordinator.hpp>
 #include "vast.h"
 
 int main(int argc, char *argv[])
@@ -54,13 +54,11 @@ int main(int argc, char *argv[])
   if (auto t = cfg->as<size_t>("caf.throughput"))
     thruput = *t;
 
-  using profiling_coordinator =
-    vast::detail::caf_profiling_coordinator<
-      vast::detail::profiled_work_stealing
-    >;
   if (cfg->check("profiler.caf"))
     caf::set_scheduler(
-      new profiling_coordinator{(log_dir / "caf.log").str(), threads, thruput});
+      new caf::scheduler::profiled_coordinator<>{
+        (log_dir / "caf.log").str(), std::chrono::milliseconds{1000},
+        threads, thruput});
   else
     caf::set_scheduler<>(threads, thruput);
 
