@@ -97,6 +97,7 @@ set(tests
   tests/io.cc
   tests/iterator.cc
   tests/json.cc
+  tests/json_parser.cc
   tests/logging.cc
   tests/offset.cc
   tests/parse.cc
