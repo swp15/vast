@@ -11,6 +11,7 @@
 #include "vast/actor/sink/json.h"
 #include "vast/actor/source/bro.h"
 #include "vast/actor/source/bgpdump.h"
+#include "vast/actor/source/bgpdumpbinary.h"
 #include "vast/actor/source/test.h"
 #include "vast/expr/normalize.h"
 #include "vast/io/file_stream.h"
@@ -133,6 +134,11 @@ message node::spawn_source(std::string const& label, message const& params)
   else if (format == "bgpdump")
   {
     src = spawn<source::bgpdump, priority_aware + detached>(
+      std::move(in));
+  }
+  else if (format == "bgpdumpbinary")
+  {
+    src = spawn<source::bgpdumpbinary, priority_aware + detached>(
       std::move(in));
   }
   else
