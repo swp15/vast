@@ -22,12 +22,20 @@ public:
   result<event> extract();
 
 private:
+  std::stringstream packet_stream;
+  std::string packet_string;
   std::vector<uint8_t> bvector;
   std::vector<uint8_t>::iterator counter;
+  std::vector<event> event_queue;
+  event first_event;
+  bool imported = false;
   uint8_t funcCounter = 0;
+  int prefixCounter = 0;
 
-  /*std::string separator_ = "|";
-  type state_change_type_;*/
+  type announce_type_;
+  type route_type_;
+  type withdraw_type_;
+  type state_change_type_;
 };
 
 } // namespace source

@@ -11,311 +11,425 @@ namespace source {
 bgpdumpbinary::bgpdumpbinary(std::unique_ptr<io::input_stream> is)
   : byte_based<bgpdumpbinary>{"bgpdumpbinary-source", std::move(is)}
 {
-   bvector = this->import();
-   counter = bvector.begin();
+  std::vector<type::record::field> fields;
+  fields.emplace_back("timestamp", type::time_point{});
+  fields.emplace_back("source_ip", type::address{});
+  fields.emplace_back("source_as", type::count{});
+  fields.emplace_back("prefix", type::subnet{});
+  fields.emplace_back("as_path", type::vector{type::count{}});
+  fields.emplace_back("origin_as", type::count{});
+  fields.emplace_back("origin", type::string{});
+  fields.emplace_back("nexthop", type::address{});
+  fields.emplace_back("local_pref", type::count{});
+  fields.emplace_back("med", type::count{});
+  fields.emplace_back("community", type::string{});
+  fields.emplace_back("atomic_aggregate", type::string{});
+  fields.emplace_back("aggregator", type::string{});
+  announce_type_ = type::record{fields};
+  announce_type_.name("bgpdump::announcement");
+
+  route_type_ = type::record{std::move(fields)};
+  route_type_.name("bgpdump::routing");
+
+  std::vector<type::record::field> withdraw_fields;
+  withdraw_fields.emplace_back("timestamp", type::time_point{});
+  withdraw_fields.emplace_back("source_ip", type::address{});
+  withdraw_fields.emplace_back("source_as", type::count{});
+  withdraw_fields.emplace_back("prefix", type::subnet{});
+  withdraw_type_ = type::record{std::move(withdraw_fields)};
+  withdraw_type_.name("bgpdump::withdrawn");
+
+  std::vector<type::record::field> state_change_fields;
+  state_change_fields.emplace_back("timestamp", type::time_point{});
+  state_change_fields.emplace_back("source_ip", type::address{});
+  state_change_fields.emplace_back("source_as", type::count{});
+  state_change_fields.emplace_back("old_state", type::count{});
+  state_change_fields.emplace_back("new_state", type::count{});
+  state_change_type_ = type::record{std::move(state_change_fields)};
+  state_change_type_.name("bgpdump::state_change");
 }
 
-schema bgpdumpbinary::sniff(){}
+schema bgpdumpbinary::sniff()
+{
+  schema sch;
+  sch.add(announce_type_);
+  sch.add(route_type_);
+  sch.add(withdraw_type_);
+  sch.add(state_change_type_);
+  return sch;
+}
 
-void bgpdumpbinary::set(schema const& sch){}
-
+void bgpdumpbinary::set(schema const& sch)
+{  
+  if (auto t = sch.find_type(announce_type_.name()))
+  {
+    if (congruent(*t, announce_type_))
+    {
+      VAST_VERBOSE("prefers type in schema over default type:", *t);
+      announce_type_ = *t;
+    }
+    else
+    {
+      VAST_WARN("ignores incongruent schema type:", t->name());
+    }
+  }
+  if (auto t = sch.find_type(route_type_.name()))
+  {
+    if (congruent(*t, route_type_))
+    {
+      VAST_VERBOSE("prefers type in schema over default type:", *t);
+      route_type_ = *t;
+    }
+    else
+    {
+      VAST_WARN("ignores incongruent schema type:", t->name());
+    }
+  }
+  if (auto t = sch.find_type(withdraw_type_.name()))
+  {
+    if (congruent(*t, withdraw_type_))
+    {
+      VAST_VERBOSE("prefers type in schema over default type:", *t);
+      withdraw_type_ = *t;
+    }
+    else
+    {
+      VAST_WARN("ignores incongruent schema type:", t->name());
+    }
+  }
+  if (auto t = sch.find_type(state_change_type_.name()))
+  {
+    if (congruent(*t, state_change_type_))
+    {
+      VAST_VERBOSE("prefers type in schema over default type:", *t);
+      state_change_type_ = *t;
+    }
+    else
+    {
+      VAST_WARN("ignores incongruent schema type:", t->name());
+    }
+  }
+}
 
 result<event> bgpdumpbinary::extract()
 {
   struct format
   {
-	uint32_t timestamp;
-	uint32_t asnnr;
-	uint16_t announce;
-	uint8_t m1;
-	uint8_t m2;
-	uint16_t nag;
-	uint16_t mode;
-	uint32_t length;
-	bool skipped;
-	std::string annmode;
-	std::string nags;
-  	std::string cmode;
-	std::vector<uint8_t> srcipv4;
-	std::vector<uint16_t> srcipv6;
-	std::vector<uint32_t> paths;
-	std::vector<uint8_t> nexthopv4;
-	std::vector<uint16_t> nexthopv6;
-	std::vector<uint16_t> asns;	
-	std::vector<uint16_t> asnsprt;	
-	std::vector<std::vector<uint16_t>> prefixv6;	
-	std::vector<std::vector<uint8_t>> prefixv4;	
+    time::point timestamp;
+    count bgp_type;
+    count type;
+    count subtype;
+    count interface_index;
+    count addr_family;
+    count old_state;
+    count new_state;
+    count bgp_length;
+    count length;
+    count pasnr;
+    count med;
+    count local_pref;
+    std::string msg_type;
+    std::string origin;
+    std::string as_path_orded;
+    std::string community;
+    std::string atomic_aggregate;
+    vast::address peer_ip_v4;
+    vast::address peer_ip_v6;
+    vast::address nexthop_v4;
+    vast::address nexthop_v6;
+    vast::vector as_path;
+    vast::vector prefix_v4;
+    vast::vector prefix_v6;
+    std::tuple<count,vast::address> aggregator;
   };
 
-  struct format t;
-  auto p = bgpbinary_parser{};
-  auto l = bvector.end();
-  auto x = p.parse(counter, l, t);
-
-  if(x.skipped)
+  // Import the binary file once
+  if (!imported)
   {
-	return {};
+    bvector = this->import();
+    counter = bvector.begin();
+    imported = true;
   }
+
+   // parse the file from the last entry until end
+   struct format t;
+   auto p = bgpbinary_parser{};
+   auto l = bvector.end();
+
+
+  if (counter == l)
+  {
+    VAST_DEBUG(this, "Import finished" << "\n");
+		assert(0==1);
+    return {};
+  }
+
+  while (event_queue.size() > 0)
+  {
+    event current_event = event_queue[event_queue.size() - 1];
+    event_queue.pop_back();
+    return std::move(current_event);
+  }
+
 
   funcCounter++;
-  std::cout << "\n";
-  std::cout << "+-----------------------------+\n";
-  std::cout << "|           BGP Packet        |\n";
-  std::cout << "+-----------------------------+\n";
-  std::cout << "funcCounter: \t" << funcCounter << "\n";
-  std::cout << "Timestamp: \t" << x.timestamp << "\n";
-  std::cout << "ASN Nr: \t" << static_cast< int >(x.asnnr) <<"\n";
-  std::cout << "Mode 1: \t" << static_cast< int >(x.m1) <<"\n";
-  std::cout << "Mode 2: \t" << static_cast< int >(x.m2) <<"\n";
+  /*if(funcCounter > 10)
+      assert(0==1);*/
 
-  if(funcCounter > 35)
-  	assert(0==1);
-  if(static_cast< int >(x.announce) == 12654)
-  {
-	x.annmode = "A";
-	std::cout << "Announce: \t" << x.annmode <<"\n";	
-	
-  }	
-  if(static_cast< int >(x.nag) == 49160)
-  {
-	x.nags = "NAG";
-	std::cout << "NAG: \t\t" << x.nags <<"\n";
-  }
-  
-  if(static_cast< int >(x.mode) == 521)
-  {
-	x.cmode = "IGP";
-  	std::cout << "Mode: \t\t" << x.cmode << "\n";
-  }
-  else if(static_cast< int >(x.mode) == 515)
-  {
-	x.cmode = "INCOMPLETE";
-  	std::cout << "Mode: \t\t" << x.cmode << "\n";
-  }
-
-  std::cout << "Source IP: \t";
-  if(x.srcipv4.size() > 0)
-  {
-  	for(size_t i=0; i < x.srcipv4.size()-1; ++i)
-  	{
-		std::cout << static_cast< int >(x.srcipv4[i]) << ".";
-  	} 
-	std::cout << static_cast< int >(x.srcipv4[x.srcipv4.size()-1]) << "\n";
-  }
-
-  else if(x.srcipv6.size() > 0)
-  {
-	for(size_t i=0; i < x.srcipv6.size()-1; ++i)
-  	{
-		std::cout << std::hex << static_cast< int >(x.srcipv6[i]) << ":";
-  	} 
-	std::cout << std::hex << static_cast< int >(x.srcipv6[x.srcipv6.size()-1]) << "\n";
-  }
-
-  std::cout << "Paths: \t\t";
-  for(size_t i=0; i < x.paths.size(); ++i)
-  {
-		std::cout << std::dec << static_cast<int>(x.paths[i]) << " ";
-  } 
-  std::cout << "\n";
-
-  std::cout << "Next Hop: \t";
-  if(x.nexthopv4.size() > 0)
-  {
-  	for(size_t i=0; i < x.nexthopv4.size()-1; ++i)
-  	{
-		std::cout << static_cast< int >(x.nexthopv4[i]) << ".";
-  	} 
-	std::cout << static_cast< int >(x.nexthopv4[x.nexthopv4.size()-1]) << "\n";
-
-  	std::cout << "ASN: \t\t";
-  	for(size_t i=0; i < x.asns.size(); ++i)
-  	{
-		std::cout << static_cast< int >(x.asns[i]) << ":" << static_cast<int>(x.asnsprt[i]) << " ";
-  	} 
-  	std::cout << "\n";
-  }
-
-  else if(x.nexthopv6.size() > 0)
-  {
-	for(size_t i=0; i < x.nexthopv6.size()-1; ++i)
-  	{
-		std::cout << std::hex << static_cast< int >(x.nexthopv6[i]) << ":";
-  	} 
-	std::cout << std::hex << static_cast< int >(x.nexthopv6[x.nexthopv6.size()-1]) << "\n";
-  }
- 
-  std::cout << "Prefix: \t";
-  if(x.prefixv4.size() > 0)
-  {
-  	for(size_t i= 0; i < x.prefixv4.size(); ++i)
-  	{
-		for(size_t j= 1; j < x.prefixv4[i].size() - 1; ++j)
-  		{
-			std::cout << static_cast<int>(x.prefixv4[i][j]) << ".";
-  		}
-		std::cout << static_cast<int>(x.prefixv4[i][x.prefixv4[i].size()-1]) << ".0";
-		std::cout << " /" << static_cast<int>(x.prefixv4[i][0]) << ", ";
-  	}
-  	std::cout << "\n";
-  }
-
-  else if(x.prefixv6.size() > 0)
-  {
-  	for(size_t i= 0; i < x.prefixv6.size(); ++i)
-  	{
-		for(size_t j= 1; j < x.prefixv6[i].size() - 1; ++j)
-  		{
-			std::cout << std::hex << static_cast<int>(x.prefixv6[i][j]) << ":";
-  		}
-		std::cout << std::hex << static_cast<int>(x.prefixv6[i][x.prefixv6[i].size()-1]) << "::";
-		std::cout << " /" << std::dec << static_cast<int>(x.prefixv6[i][0]) << ", ";
-		
-  	}
-  	std::cout << "\n";
-  }
-  
-  /*auto elems = util::split(this->line(), separator_);
-  if (elems.size() < 5)
-    return {};*/
-
- //time::point xy = time::now() - time.now() + x.timestamp;
- // xy = x.timestamp;
-  //auto timestamp;
-  //time::point xy = time:point{timestamp};
-
-  //time::point xz = time::point{x.timestamp};
-  //time::point{x.timestamp};
-  //auto t = parse(timestamp, elems[1].first, elems[1].second);
- // if (! t)
-  //  return {};
-
-  //std::string update; // A,W,STATE,...
-  //t = parse(update, elems[2].first, elems[2].second);
-  //if (! t)
-   // return {};
-
-  //vast::address source_ip = vast::address(x.srcipv4);
-  /*vast::address source_ip;
-  t = parse(source_ip, elems[3].first, elems[3].second);
-  if (! t)
-    return {};
-
-  count source_as;
-  t = parse(source_as, elems[4].first, elems[4].second);
-  if (! t)
-    return {};
+  auto x = p.parse(counter, l, t);
 
   record r;
-  r.emplace_back(std::move(timestamp));
-  r.emplace_back(std::move(source_ip));
-  r.emplace_back(std::move(source_as));
 
-  if ((update == "A" || update == "B") && elems.size() >= 14)
+  /*----------------- Withdraw Packet ----------------*/
+  if (x.msg_type == "W")
   {
-    // announcement or routing table entry
-    subnet prefix;
-    t = parse(prefix, elems[5].first, elems[5].second);
-    if (! t)
-      return {};
+    if (x.addr_family == 1)
+      prefixCounter = x.prefix_v4.size();
 
-    vast::vector as_path;
-    count origin_as = 0;
-    t = parse_origin_as(origin_as, as_path, elems[6].first, elems[6].second);
-    if (! t)
-      return {};
+    else if (x.addr_family == 2)
+      prefixCounter = x.prefix_v6.size();
 
-    std::string origin;
-    t = parse(origin, elems[7].first, elems[7].second);
-    if (! t)
-      return {};
-
-    vast::address nexthop;
-    t = parse(nexthop, elems[8].first, elems[8].second);
-    if (! t)
-      return {};
-
-    count local_pref;
-    t = parse(local_pref, elems[9].first, elems[9].second);
-    if (! t)
-      return {};
-
-    count med;
-    t = parse(med, elems[10].first, elems[10].second);
-    if (! t)
-      return {};
-
-    std::string community;
-    if (elems[11].first != elems[11].second)
+    for (size_t i = 0; i < prefixCounter; ++i)
     {
-      t = parse(community, elems[11].first, elems[11].second);
-      if (! t)
-        return {};
+      packet_stream <<"\nBGP4MP|";
+
+      // Timestamp
+      packet_stream << x.timestamp << "|";
+      r.emplace_back(x.timestamp);
+
+      // Message Type
+      packet_stream << x.msg_type << "|";
+
+      // Withdraw - Source IPv4
+      if (x.addr_family == 1)
+      {
+        packet_stream << to_string(x.peer_ip_v4) << "|";
+        r.emplace_back(x.peer_ip_v4);
+      }
+
+      // Withdraw - Source IPv6
+      else if (x.addr_family == 2)
+      {
+        packet_stream << to_string(x.peer_ip_v6) << "|";
+        r.emplace_back(x.peer_ip_v6);
+      }
+
+      // Withdraw - AS Number
+      packet_stream << std::dec << x.pasnr << "|";
+      r.emplace_back(x.pasnr);
+
+      // Withdraw - Prefix IPv4
+      if(x.addr_family == 1)
+      {
+        packet_stream << x.prefix_v4[i] <<"|";
+        r.emplace_back(x.prefix_v4[i]);
+      }
+
+      // Withdraw - Prefix IPv6
+      else if (x.addr_family == 2) 
+      {
+        packet_stream << x.prefix_v6[i] <<"|";
+        r.emplace_back(x.prefix_v6[i]);
+      }
+
+      event e{{std::move(r), announce_type_}};
+      e.timestamp(x.timestamp);
+
+      if (prefixCounter == 1)
+        return std::move(e);
+
+      else
+      {
+        if (i == 0)
+          first_event = e;
+
+        else
+          event_queue.push_back(e);
+      }
+
+      packet_string = packet_stream.str();
+      //VAST_DEBUG(this, packet_string << "\n");
+      packet_stream.str(std::string());
     }
 
-    std::string atomic_aggregate;
-    if (elems[12].first != elems[12].second)
-    {
-      t = parse(atomic_aggregate, elems[12].first, elems[12].second);
-      if (! t)
-        return {};
-    }
-
-    std::string aggregator;
-    if (elems[13].first != elems[13].second)
-    {
-      t = parse(aggregator, elems[13].first, elems[13].second);
-      if (! t)
-        return {};
-    }
-
-    r.emplace_back(std::move(prefix));
-    r.emplace_back(std::move(as_path));
-    r.emplace_back(std::move(origin_as));
-    r.emplace_back(std::move(origin));
-    r.emplace_back(std::move(nexthop));
-    r.emplace_back(std::move(local_pref));
-    r.emplace_back(std::move(med));
-    r.emplace_back(std::move(community));
-    r.emplace_back(std::move(atomic_aggregate));
-    r.emplace_back(std::move(aggregator));
-    event e{{std::move(r), update == "A" ? announce_type_ : route_type_}};
-    e.timestamp(timestamp);
-    return std::move(e);
+    return std::move(first_event);    
   }
-  else if (update == "W" && elems.size() >= 6) // withdraw
+  /*----------------- Withdraw Packet End-------------*/
+
+  /*----------------- State Packet -------------------*/
+  else if (x.msg_type == "STATE")
   {
-    subnet prefix;
-    t = parse(prefix, elems[5].first, elems[5].second);
-    if (! t)
-      return {};
+    packet_stream <<"\nBGP4MP|";
 
-    r.emplace_back(std::move(prefix));
-    event e{{std::move(r), withdraw_type_}};
-    e.timestamp(timestamp);
-    return std::move(e);
-  }
-  else if (update == "STATE" && elems.size() >= 7) // state change
-  {
-    std::string old_state;
-    t = parse(old_state, elems[5].first, elems[5].second);
-    if (! t)
-      return {};
+    // Timestamp
+    packet_stream << x.timestamp << "|";
+    r.emplace_back(std::move(x.timestamp));
 
-    std::string new_state;
-    t = parse(new_state, elems[6].first, elems[6].second);
-    if (! t)
-      return {};
+    // Message Type
+    packet_stream << x.msg_type << "|";
 
-    r.emplace_back(std::move(old_state));
-    r.emplace_back(std::move(new_state));
-    event e{{std::move(r), state_change_type_}};
-    e.timestamp(timestamp);
-    return std::move(e);
-  }*/
-  return {};
+    // State - Source IPv4
+    if (x.addr_family == 1)
+    {
+      packet_stream << x.peer_ip_v4 << "|";
+      r.emplace_back(std::move(x.peer_ip_v4));
+    }
+
+    // State - Source IPv6
+    else if (x.addr_family == 2)
+    {
+      packet_stream << to_string(x.peer_ip_v6) << "|";
+      r.emplace_back(std::move(x.peer_ip_v6));
+    }
+
+    // State - AS Number
+    packet_stream << static_cast<int>(x.pasnr) << "|";
+    r.emplace_back(std::move(x.pasnr));
+
+    // State - Mode 1
+    packet_stream << static_cast<int>(x.old_state) << "|";
+    r.emplace_back(std::move(x.old_state));
+
+    // State - Mode 2
+    packet_stream << static_cast<int>(x.new_state) << "|";
+    r.emplace_back(std::move(x.new_state));
+
+    packet_string = packet_stream.str();
+    //VAST_DEBUG(this, packet_string << "\n");
+    packet_stream.str(std::string());
   
-}
+    event e{{std::move(r), state_change_type_}};
+    e.timestamp(x.timestamp);
+    return std::move(e);
+   }
+  /*----------------- State Packet End----------------*/
 
+  /*----------------- Announce Packet ----------------*/
+  else if (x.msg_type == "A")
+  {
+    if (x.addr_family == 1)
+      prefixCounter = x.prefix_v4.size();
+    else if (x.addr_family == 2)
+      prefixCounter = x.prefix_v6.size();
+   
+    for (size_t i = 0; i < prefixCounter; ++i)
+    {
+      packet_stream <<"\nBGP4MP|";
+
+      // Timestamp
+      packet_stream << x.timestamp << "|";
+      r.emplace_back(x.timestamp);
+
+      // Message Type
+      packet_stream << x.msg_type << "|";
+
+      // Announce - Source IPv4
+      if(x.addr_family == 1)
+      {
+        packet_stream << x.peer_ip_v4 << "|";
+        r.emplace_back(x.peer_ip_v4);
+      }
+
+      // Announce - Source IPv6 
+      else if (x.addr_family == 2) 
+      {
+        packet_stream << to_string(x.peer_ip_v6) << "|";
+        r.emplace_back(x.peer_ip_v6);
+      }
+
+      // Announce - AS Number
+      packet_stream << x.pasnr <<"|";
+      r.emplace_back(x.pasnr);
+
+      // Announce - Prefix IPv4
+      if(x.addr_family == 1)
+      {
+        packet_stream << x.prefix_v4[i] << "|";
+        r.emplace_back(x.prefix_v4[i]);
+      }
+
+      // Announce - Prefix IPv6
+      else if (x.addr_family == 2) 
+      {
+        packet_stream << x.prefix_v6[i] << "|";
+        r.emplace_back(x.prefix_v6[i]);
+      }
+
+      // Announce - Paths
+      packet_stream << to_string(x.as_path) << "|";
+      r.emplace_back(x.as_path);
+
+      // Announce - Origin
+      packet_stream << x.origin << "|";
+      r.emplace_back(x.origin);
+
+      //Announce - Next Hop & Community IPv4
+      if(x.addr_family == 1)
+      {
+        packet_stream << to_string(x.nexthop_v4) << "|";
+        r.emplace_back(x.nexthop_v4);
+      }
+
+      //Announce - Next Hop & Community IPv6
+      else if(x.addr_family == 2)
+      {
+        packet_stream << to_string(x.nexthop_v6) << "|";
+        r.emplace_back(x.nexthop_v6);
+      }
+
+      // Announce - Local Pref
+      packet_stream << x.local_pref << "|";
+      r.emplace_back(x.local_pref);
+
+      // Announce - Med
+      packet_stream << x.med << "|";
+      r.emplace_back(x.med);
+
+      // Announce - Community
+      packet_stream << x.community << "|";
+      r.emplace_back(x.community);
+
+      // Announce - Atomic Aggregate
+      packet_stream << x.atomic_aggregate << "|";
+      r.emplace_back(x.atomic_aggregate);
+
+      // Announce - Aggregator
+      count route;
+      vast::address addr;
+      std::tie (route, addr) = x.aggregator;
+      if (route != 0)
+      {
+        packet_stream << "|" << route << " " << addr << "|";
+        std::string aggregator = to_string(route) + std::string(" ") + to_string(addr);
+        r.emplace_back(aggregator);
+      }
+
+      else
+        packet_stream << "|";
+
+      event e{{std::move(r), announce_type_}};
+      e.timestamp(x.timestamp);
+
+      if (prefixCounter == 1)
+        return std::move(e);
+
+      else
+      {
+        if (i == 0)
+          first_event = e;
+
+        else
+          event_queue.push_back(e);
+      }
+
+      packet_string = packet_stream.str();
+      //VAST_DEBUG(this, packet_string << "\n");
+      packet_stream.str(std::string());
+    }
+
+    return std::move(first_event);
+    /*----------------- Announce Packet End --------------*/  
+  }
+}
 } // namespace source
 } // namespace vast
