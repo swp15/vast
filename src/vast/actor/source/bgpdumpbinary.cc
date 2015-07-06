@@ -160,7 +160,6 @@ result<event> bgpdumpbinary::extract()
   if (counter == l)
   {
     VAST_DEBUG(this, "Import finished" << "\n");
-		assert(0==1);
     return {};
   }
 
@@ -248,7 +247,7 @@ result<event> bgpdumpbinary::extract()
       }
 
       packet_string = packet_stream.str();
-      //VAST_DEBUG(this, packet_string << "\n");
+      VAST_DEBUG(this, packet_string << "\n");
       packet_stream.str(std::string());
     }
 
@@ -295,7 +294,7 @@ result<event> bgpdumpbinary::extract()
     r.emplace_back(std::move(x.new_state));
 
     packet_string = packet_stream.str();
-    //VAST_DEBUG(this, packet_string << "\n");
+    VAST_DEBUG(this, packet_string << "\n");
     packet_stream.str(std::string());
   
     event e{{std::move(r), state_change_type_}};
@@ -423,7 +422,7 @@ result<event> bgpdumpbinary::extract()
       }
 
       packet_string = packet_stream.str();
-      //VAST_DEBUG(this, packet_string << "\n");
+      VAST_DEBUG(this, packet_string << "\n");
       packet_stream.str(std::string());
     }
 
