@@ -22,15 +22,14 @@ public:
   result<event> extract();
 
 private:
-  std::stringstream packet_stream;
-  std::string packet_string;
-  std::vector<uint8_t> bvector;
-  std::vector<uint8_t>::iterator counter;
-  std::vector<event> event_queue;
-  event first_event;
-  bool imported = false;
-  uint8_t funcCounter = 0;
-  int prefixCounter = 0;
+  std::stringstream packet_stream_;
+  std::string packet_string_;
+  std::vector<uint8_t> bytes_;
+  std::vector<uint8_t>::iterator counter_;
+  std::vector<event> event_queue_;
+  event first_event_;
+  bool imported_ = false;
+  //uint8_t func_counter_ = 0;
 
   type announce_type_;
   type route_type_;

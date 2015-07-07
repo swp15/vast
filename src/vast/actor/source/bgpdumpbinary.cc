@@ -1,8 +1,7 @@
-#include "vast/actor/source/bgpdumpbinary.h"
-#include "vast/concept/parseable/numeric/binary.h"
 #include "vast/time.h"
 #include "vast/address.h"
-#include <cassert>
+#include "vast/actor/source/bgpdumpbinary.h"
+#include "vast/concept/parseable/numeric/binary.h"
 #include "vast/concept/parseable/vast/bgpbinary_parser.h"
 
 namespace vast {
@@ -60,7 +59,7 @@ schema bgpdumpbinary::sniff()
 }
 
 void bgpdumpbinary::set(schema const& sch)
-{  
+{
   if (auto t = sch.find_type(announce_type_.name()))
   {
     if (congruent(*t, announce_type_))
@@ -140,163 +139,160 @@ result<event> bgpdumpbinary::extract()
     vast::vector as_path;
     vast::vector prefix_v4;
     vast::vector prefix_v6;
-    std::tuple<count,vast::address> aggregator;
+    std::tuple<count, vast::address> aggregator;
   };
 
   // Import the binary file once
-  if (!imported)
+  if (! imported_)
   {
-    bvector = this->import();
-    counter = bvector.begin();
-    imported = true;
+    bytes_ = this->import();
+    counter_ = bytes_.begin();
+    imported_ = true;
   }
 
-   // parse the file from the last entry until end
-   struct format t;
-   auto p = bgpbinary_parser{};
-   auto l = bvector.end();
-
-
-  if (counter == l)
+  if (counter_ == bytes_.end())
   {
-    VAST_DEBUG(this, "Import finished" << "\n");
+    VAST_DEBUG(this, "finished import");
+    done(true);
     return {};
   }
 
-  while (event_queue.size() > 0)
+  while (! event_queue_.empty())
   {
-    event current_event = event_queue[event_queue.size() - 1];
-    event_queue.pop_back();
+    event current_event = event_queue_.back();
+    event_queue_.pop_back();
     return std::move(current_event);
   }
 
+  //func_counter_++;
+  //if(func_counter_ > 10)
+  //    VAST_ASSERT(0==1);
 
-  funcCounter++;
-  /*if(funcCounter > 10)
-      assert(0==1);*/
-
-  auto x = p.parse(counter, l, t);
+   // Parse the file from the last entry until end.
+  static auto p = bgpbinary_parser{};
+  format fmt;
+  auto x = p.parse(counter_, bytes_.end(), fmt);
 
   record r;
 
   /*----------------- Withdraw Packet ----------------*/
+  auto prefix_counter = size_t{0};
   if (x.msg_type == "W")
   {
     if (x.addr_family == 1)
-      prefixCounter = x.prefix_v4.size();
-
+      prefix_counter = x.prefix_v4.size();
     else if (x.addr_family == 2)
-      prefixCounter = x.prefix_v6.size();
+      prefix_counter = x.prefix_v6.size();
 
-    for (size_t i = 0; i < prefixCounter; ++i)
+    for (size_t i = 0; i < prefix_counter; ++i)
     {
-      packet_stream <<"\nBGP4MP|";
+      packet_stream_ <<"\nBGP4MP|";
 
       // Timestamp
-      packet_stream << x.timestamp << "|";
+      packet_stream_ << x.timestamp << "|";
       r.emplace_back(x.timestamp);
 
       // Message Type
-      packet_stream << x.msg_type << "|";
+      packet_stream_ << x.msg_type << "|";
 
       // Withdraw - Source IPv4
       if (x.addr_family == 1)
       {
-        packet_stream << to_string(x.peer_ip_v4) << "|";
+        packet_stream_ << to_string(x.peer_ip_v4) << "|";
         r.emplace_back(x.peer_ip_v4);
       }
 
       // Withdraw - Source IPv6
       else if (x.addr_family == 2)
       {
-        packet_stream << to_string(x.peer_ip_v6) << "|";
+        packet_stream_ << to_string(x.peer_ip_v6) << "|";
         r.emplace_back(x.peer_ip_v6);
       }
 
       // Withdraw - AS Number
-      packet_stream << std::dec << x.pasnr << "|";
+      packet_stream_ << std::dec << x.pasnr << "|";
       r.emplace_back(x.pasnr);
 
       // Withdraw - Prefix IPv4
       if(x.addr_family == 1)
       {
-        packet_stream << x.prefix_v4[i] <<"|";
+        packet_stream_ << x.prefix_v4[i] <<"|";
         r.emplace_back(x.prefix_v4[i]);
       }
 
       // Withdraw - Prefix IPv6
-      else if (x.addr_family == 2) 
+      else if (x.addr_family == 2)
       {
-        packet_stream << x.prefix_v6[i] <<"|";
+        packet_stream_ << x.prefix_v6[i] <<"|";
         r.emplace_back(x.prefix_v6[i]);
       }
 
       event e{{std::move(r), announce_type_}};
       e.timestamp(x.timestamp);
 
-      if (prefixCounter == 1)
+      if (prefix_counter == 1)
         return std::move(e);
 
       else
       {
         if (i == 0)
-          first_event = e;
+          first_event_ = e;
 
         else
-          event_queue.push_back(e);
+          event_queue_.push_back(e);
       }
 
-      packet_string = packet_stream.str();
-      VAST_DEBUG(this, packet_string << "\n");
-      packet_stream.str(std::string());
+      packet_string_ = packet_stream_.str();
+      VAST_DEBUG(this, packet_string_ << "\n");
+      packet_stream_.str(std::string());
     }
 
-    return std::move(first_event);    
+    return std::move(first_event_);
   }
   /*----------------- Withdraw Packet End-------------*/
 
   /*----------------- State Packet -------------------*/
   else if (x.msg_type == "STATE")
   {
-    packet_stream <<"\nBGP4MP|";
+    packet_stream_ <<"\nBGP4MP|";
 
     // Timestamp
-    packet_stream << x.timestamp << "|";
+    packet_stream_ << x.timestamp << "|";
     r.emplace_back(std::move(x.timestamp));
 
     // Message Type
-    packet_stream << x.msg_type << "|";
+    packet_stream_ << x.msg_type << "|";
 
     // State - Source IPv4
     if (x.addr_family == 1)
     {
-      packet_stream << x.peer_ip_v4 << "|";
+      packet_stream_ << x.peer_ip_v4 << "|";
       r.emplace_back(std::move(x.peer_ip_v4));
     }
 
     // State - Source IPv6
     else if (x.addr_family == 2)
     {
-      packet_stream << to_string(x.peer_ip_v6) << "|";
+      packet_stream_ << to_string(x.peer_ip_v6) << "|";
       r.emplace_back(std::move(x.peer_ip_v6));
     }
 
     // State - AS Number
-    packet_stream << static_cast<int>(x.pasnr) << "|";
+    packet_stream_ << static_cast<int>(x.pasnr) << "|";
     r.emplace_back(std::move(x.pasnr));
 
     // State - Mode 1
-    packet_stream << static_cast<int>(x.old_state) << "|";
+    packet_stream_ << static_cast<int>(x.old_state) << "|";
     r.emplace_back(std::move(x.old_state));
 
     // State - Mode 2
-    packet_stream << static_cast<int>(x.new_state) << "|";
+    packet_stream_ << static_cast<int>(x.new_state) << "|";
     r.emplace_back(std::move(x.new_state));
 
-    packet_string = packet_stream.str();
-    VAST_DEBUG(this, packet_string << "\n");
-    packet_stream.str(std::string());
-  
+    packet_string_ = packet_stream_.str();
+    VAST_DEBUG(this, packet_string_ << "\n");
+    packet_stream_.str(std::string());
+
     event e{{std::move(r), state_change_type_}};
     e.timestamp(x.timestamp);
     return std::move(e);
@@ -307,128 +303,133 @@ result<event> bgpdumpbinary::extract()
   else if (x.msg_type == "A")
   {
     if (x.addr_family == 1)
-      prefixCounter = x.prefix_v4.size();
-    else if (x.addr_family == 2)
-      prefixCounter = x.prefix_v6.size();
-   
-    for (size_t i = 0; i < prefixCounter; ++i)
     {
-      packet_stream <<"\nBGP4MP|";
+      prefix_counter = x.prefix_v4.size();
+    }
+    else if (x.addr_family == 2)
+    {
+      prefix_counter = x.prefix_v6.size();
+    }
+    else
+    {
+      VAST_WARN("invalid address family");
+      return {};
+    }
+
+    for (size_t i = 0; i < prefix_counter; ++i)
+    {
+      packet_stream_ <<"\nBGP4MP|";
 
       // Timestamp
-      packet_stream << x.timestamp << "|";
+      packet_stream_ << x.timestamp << "|";
       r.emplace_back(x.timestamp);
 
       // Message Type
-      packet_stream << x.msg_type << "|";
+      packet_stream_ << x.msg_type << "|";
 
       // Announce - Source IPv4
-      if(x.addr_family == 1)
+      if (x.addr_family == 1)
       {
-        packet_stream << x.peer_ip_v4 << "|";
+        packet_stream_ << x.peer_ip_v4 << "|";
         r.emplace_back(x.peer_ip_v4);
       }
 
-      // Announce - Source IPv6 
-      else if (x.addr_family == 2) 
+      // Announce - Source IPv6
+      else if (x.addr_family == 2)
       {
-        packet_stream << to_string(x.peer_ip_v6) << "|";
+        packet_stream_ << to_string(x.peer_ip_v6) << "|";
         r.emplace_back(x.peer_ip_v6);
       }
 
       // Announce - AS Number
-      packet_stream << x.pasnr <<"|";
+      packet_stream_ << x.pasnr <<"|";
       r.emplace_back(x.pasnr);
 
       // Announce - Prefix IPv4
-      if(x.addr_family == 1)
+      if (x.addr_family == 1)
       {
-        packet_stream << x.prefix_v4[i] << "|";
+        packet_stream_ << x.prefix_v4[i] << "|";
         r.emplace_back(x.prefix_v4[i]);
       }
 
       // Announce - Prefix IPv6
-      else if (x.addr_family == 2) 
+      else if (x.addr_family == 2)
       {
-        packet_stream << x.prefix_v6[i] << "|";
+        packet_stream_ << x.prefix_v6[i] << "|";
         r.emplace_back(x.prefix_v6[i]);
       }
 
       // Announce - Paths
-      packet_stream << to_string(x.as_path) << "|";
+      packet_stream_ << to_string(x.as_path) << "|";
       r.emplace_back(x.as_path);
 
       // Announce - Origin
-      packet_stream << x.origin << "|";
+      packet_stream_ << x.origin << "|";
       r.emplace_back(x.origin);
 
       //Announce - Next Hop & Community IPv4
-      if(x.addr_family == 1)
+      if (x.addr_family == 1)
       {
-        packet_stream << to_string(x.nexthop_v4) << "|";
+        packet_stream_ << to_string(x.nexthop_v4) << "|";
         r.emplace_back(x.nexthop_v4);
       }
 
       //Announce - Next Hop & Community IPv6
-      else if(x.addr_family == 2)
+      else if (x.addr_family == 2)
       {
-        packet_stream << to_string(x.nexthop_v6) << "|";
+        packet_stream_ << to_string(x.nexthop_v6) << "|";
         r.emplace_back(x.nexthop_v6);
       }
 
       // Announce - Local Pref
-      packet_stream << x.local_pref << "|";
+      packet_stream_ << x.local_pref << "|";
       r.emplace_back(x.local_pref);
 
       // Announce - Med
-      packet_stream << x.med << "|";
+      packet_stream_ << x.med << "|";
       r.emplace_back(x.med);
 
       // Announce - Community
-      packet_stream << x.community << "|";
+      packet_stream_ << x.community << "|";
       r.emplace_back(x.community);
 
       // Announce - Atomic Aggregate
-      packet_stream << x.atomic_aggregate << "|";
+      packet_stream_ << x.atomic_aggregate << "|";
       r.emplace_back(x.atomic_aggregate);
 
       // Announce - Aggregator
       count route;
       vast::address addr;
-      std::tie (route, addr) = x.aggregator;
+      std::tie(route, addr) = x.aggregator;
+      packet_stream_ << "|";
       if (route != 0)
       {
-        packet_stream << "|" << route << " " << addr << "|";
-        std::string aggregator = to_string(route) + std::string(" ") + to_string(addr);
-        r.emplace_back(aggregator);
+        packet_stream_ << route << " " << addr << "|";
+        r.emplace_back(to_string(route) + ' ' + to_string(addr));
       }
-
-      else
-        packet_stream << "|";
 
       event e{{std::move(r), announce_type_}};
       e.timestamp(x.timestamp);
 
-      if (prefixCounter == 1)
+      if (prefix_counter == 1)
         return std::move(e);
 
+      if (i == 0)
+        first_event_ = std::move(e);
       else
-      {
-        if (i == 0)
-          first_event = e;
+        event_queue_.push_back(std::move(e));
 
-        else
-          event_queue.push_back(e);
-      }
-
-      packet_string = packet_stream.str();
-      VAST_DEBUG(this, packet_string << "\n");
-      packet_stream.str(std::string());
+      packet_string_ = packet_stream_.str();
+      VAST_DEBUG(this, packet_string_ << "\n");
+      packet_stream_.str(std::string());
     }
 
-    return std::move(first_event);
-    /*----------------- Announce Packet End --------------*/  
+    return std::move(first_event_);
+    /*----------------- Announce Packet End --------------*/
   }
+
+  return {};
 }
+
 } // namespace source
 } // namespace vast

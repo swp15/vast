@@ -1,7 +1,7 @@
 #ifndef VAST_ACTOR_SOURCE_BYTE_BASED_H
 #define VAST_ACTOR_SOURCE_BYTE_BASED_H
 
-#include <cassert>
+#include <algorithm>
 
 #include "vast/actor/source/base.h"
 #include "vast/io/getline.h"
@@ -26,25 +26,20 @@ protected:
     VAST_ASSERT(input_stream_ != nullptr);
   }
 
-  /// Imports the byte-file.
-  /// @returns an byte-vector on success.
+  /// Imports a file in its entirety.
+  /// @returns The byte vector.
   std::vector<uint8_t> import()
   {
-  	while (input_stream_->next(reinterpret_cast<const void**>(&buf), &size))
-  	{
-    		for (size_t i = 0; i < size; ++i)
-    		{
-			bvector.push_back(buf[i]);
-		}
-	}	
-	return bvector;
+    uint8_t const* buf;
+    size_t size;
+    std::vector<uint8_t> bytes;
+    while (input_stream_->next(reinterpret_cast<void const**>(&buf), &size))
+      std::copy_n(buf, size, std::back_inserter(bytes));
+    return bytes;
   }
 
 private:
   std::unique_ptr<io::input_stream> input_stream_;
-  std::vector<uint8_t> bvector;
-  uint8_t const* buf;
-  size_t size;
 };
 
 } // namespace source
