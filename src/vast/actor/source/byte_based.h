@@ -11,7 +11,7 @@
 namespace vast {
 namespace source {
 
-/// A byte-based source that transforms an input stream into lines.
+/// A byte-based source that transforms an input stream into byte vector.
 template <typename Derived>
 class byte_based : public base<Derived>
 {

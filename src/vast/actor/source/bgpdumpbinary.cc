@@ -159,8 +159,7 @@ result<event> bgpdumpbinary::extract()
 
   if (counter == l)
   {
-    //VAST_DEBUG(this, "Import finished" << "\n");
-		this->done(true);
+    this->done(true);
     return {};
   }
 
@@ -172,21 +171,19 @@ result<event> bgpdumpbinary::extract()
   }
 
   auto x = p.parse(counter, l, t);
-
   record r;
 
-	if (x.timestamp == time::point{time::seconds{0}})
-		return {};
+  if (x.timestamp == time::point{time::seconds{0}})
+    return {};
+
+  if (x.addr_family == 1)
+    prefixCounter = x.prefix_v4.size();
+  else if (x.addr_family == 2)
+    prefixCounter = x.prefix_v6.size();
 
   /*----------------- Withdraw Packet ----------------*/
   if (x.msg_type == "W")
   {
-    if (x.addr_family == 1)
-      prefixCounter = x.prefix_v4.size();
-
-    else if (x.addr_family == 2)
-      prefixCounter = x.prefix_v6.size();
-
     for (int i = 0; i < prefixCounter; ++i)
     {
       packet_stream <<"\nBGP4MP|";
@@ -230,34 +227,27 @@ result<event> bgpdumpbinary::extract()
         r.emplace_back(x.prefix_v6[i]);
       }
 
+      // Withdraw - Event
       event e{{std::move(r), announce_type_}};
       e.timestamp(x.timestamp);
+      event_queue.push_back(e);
 
-      if (prefixCounter == 1)
-        return std::move(e);
-
-      else
-      {
-        if (i == 0)
-          first_event = e;
-
-        else
-          event_queue.push_back(e);
-      }
-
+      // Withdraw - Debug
       packet_string = packet_stream.str();
       //VAST_DEBUG(this, packet_string << "\n");
       packet_stream.str(std::string());
     }
 
-    return std::move(first_event);    
+    event current_event = event_queue[event_queue.size() - 1];
+    event_queue.pop_back();
+    return std::move(current_event);
   }
   /*----------------- Withdraw Packet End-------------*/
 
   /*----------------- State Packet -------------------*/
   else if (x.msg_type == "STATE")
   {
-    packet_stream <<"\nBGP4MP|";
+    packet_stream << "\nBGP4MP|";
 
     // Timestamp
     packet_stream << x.timestamp << "|";
@@ -304,15 +294,10 @@ result<event> bgpdumpbinary::extract()
 
   /*----------------- Announce Packet ----------------*/
   else if (x.msg_type == "A")
-  {
-    if (x.addr_family == 1)
-      prefixCounter = x.prefix_v4.size();
-    else if (x.addr_family == 2)
-      prefixCounter = x.prefix_v6.size();
-  
+  {  
     for (int i = 0; i < prefixCounter; ++i)
     {
-      packet_stream <<"\nBGP4MP|";
+      packet_stream << "\nBGP4MP|";
 
       // Timestamp
       packet_stream << x.timestamp << "|";
@@ -336,7 +321,7 @@ result<event> bgpdumpbinary::extract()
       }
 
       // Announce - AS Number
-      packet_stream << x.pasnr <<"|";
+      packet_stream << x.pasnr << "|";
       r.emplace_back(x.pasnr);
 
       // Announce - Prefix IPv4
@@ -408,21 +393,12 @@ result<event> bgpdumpbinary::extract()
       else
         packet_stream << "|";
 
+      // Announce - Event
       event e{{std::move(r), announce_type_}};
       e.timestamp(x.timestamp);
-
-      /*if (prefixCounter == 1)
-        return std::move(e);
-
-      else
-      {
-        if (i == 0)
-          first_event = e;
-
-        else*/
       event_queue.push_back(e);
-      //}
 
+      // Announce - Debug
       packet_string = packet_stream.str();
       //VAST_DEBUG(this, packet_string << "\n");
       packet_stream.str(std::string());
@@ -431,7 +407,7 @@ result<event> bgpdumpbinary::extract()
     event current_event = event_queue[event_queue.size() - 1];
     event_queue.pop_back();
     return std::move(current_event);
-    /*----------------- Announce Packet End --------------*/  
+    /*----------------- Announce Packet End --------------*/
   }
 }
 } // namespace source

@@ -7,12 +7,12 @@
 namespace vast {
 namespace source {
 
-/// A source reading ASCII output from the BGPDump utility.
+/// A source reading binary files.
 class bgpdumpbinary : public byte_based<bgpdumpbinary>
 {
 public:
-  /// Spawns a BGPDump source.
-  /// @param is The input stream to read BGPDump data logs from.
+  /// Spawns a BGPDumpbinar< source.
+  /// @param is The input stream to read binary data logs from.
   bgpdumpbinary(std::unique_ptr<io::input_stream> is);
 
   schema sniff();
@@ -27,9 +27,7 @@ private:
   std::vector<uint8_t> bvector;
   std::vector<uint8_t>::iterator counter;
   std::vector<event> event_queue;
-  event first_event;
   bool imported = false;
-  uint8_t funcCounter = 0;
   int prefixCounter = 0;
 
   type announce_type_;
