@@ -84,7 +84,8 @@ struct bgpbinary_parser : parser<bgpbinary_parser>
 
 	 	if (r.type != 16 && r.type != 17)
 		{
-			return {};
+			r.timestamp = time::point{time::seconds{0}};
+			return r;
 		}
 
 		/*-----------BGP4MP_MESSAGE_AS4-----------*/
@@ -168,7 +169,8 @@ struct bgpbinary_parser : parser<bgpbinary_parser>
 		// only BGP Message packets allowed
 		if (r.subtype != 4)
 		{
-			return {};
+			r.timestamp = time::point{time::seconds{0}};
+			return r;
 		}
 
 		// BGP - Marker
@@ -192,7 +194,9 @@ struct bgpbinary_parser : parser<bgpbinary_parser>
 		{
 			//TODO: BGP - KEEPALIVE Support
 			f += length;
-			return {};
+
+			r.timestamp = time::point{time::seconds{0}};
+			return r;
 		} 
 
 		/*-----------BGP4MP_MESSAGE_UPDATE_WITHDRAW-----------*/
@@ -257,7 +261,7 @@ struct bgpbinary_parser : parser<bgpbinary_parser>
 			uint8_t wd_prefix_len_v6;
 			uint32_t const* bytes32;
 			std::array<uint8_t, 16> bytes;
-			vast:address addr_v6;
+			vast::address addr_v6;
 
 			// BGP - Withdraw - Prefix - IPv6
 			while (wd_rts_len > 0)
@@ -283,7 +287,9 @@ struct bgpbinary_parser : parser<bgpbinary_parser>
 			if (length != 0)
 			{
 				VAST_WARN("Packet-End not reached", length);
-				return {};
+
+				r.timestamp = time::point{time::seconds{0}};
+				return r;
 			}
 		
 			return r;			
@@ -754,7 +760,9 @@ struct bgpbinary_parser : parser<bgpbinary_parser>
 		{
 			VAST_WARN("The Length is not zero -> there are same not interpreted fields", length);
 			f = f + length;
-			return {};
+
+			r.timestamp = time::point{time::seconds{0}};
+			return r;
 		}
 
 		return r; 

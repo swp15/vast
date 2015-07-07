@@ -36,7 +36,8 @@ protected:
     		{
 			bvector.push_back(buf[i]);
 		}
-	}	
+	}
+		
 	return bvector;
   }
 
