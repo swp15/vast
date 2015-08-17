@@ -42,7 +42,6 @@ set(libvast_sources
   actor/sink/bro.cc
   actor/sink/json.cc
   actor/source/bro.cc
-  actor/source/bgpdumpbinary.cc
   actor/source/bgpdump.cc
   actor/source/test.cc
   concept/serializable/hierarchy.cc
