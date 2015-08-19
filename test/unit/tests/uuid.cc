@@ -1,15 +1,16 @@
 #include <unordered_set>
 
 #include "vast/uuid.h"
-#include "vast/print.h"
-#include "vast/parse.h"
+#include "vast/concept/parseable/to.h"
+#include "vast/concept/parseable/vast/uuid.h"
+#include "vast/concept/printable/to_string.h"
+#include "vast/concept/printable/vast/uuid.h"
 
 #include "test.h"
 
 using namespace vast;
 
-TEST(UUID)
-{
+TEST(UUID) {
   CHECK(sizeof(uuid) == 16ul);
   auto u = to<uuid>("01234567-89ab-cdef-0123-456789abcdef");
   REQUIRE(u);

@@ -4,15 +4,14 @@
 #include <pcap.h>
 #include "vast/filesystem.h"
 #include "vast/schema.h"
+#include "vast/type.h"
 #include "vast/actor/sink/base.h"
-#include "vast/detail/packet_type.h"
 
 namespace vast {
 namespace sink {
 
 /// A file source that reads PCAP traces.
-class pcap : public base<pcap>
-{
+class pcap : public base<pcap> {
 public:
   /// Constructs a file source.
   /// @param sch The schema containing the packet type.

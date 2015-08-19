@@ -1,13 +1,17 @@
 #ifndef VAST_VALUE_H
 #define VAST_VALUE_H
 
+#include <type_traits>
+
 #include "vast/data.h"
+#include "vast/none.h"
+#include "vast/type.h"
+#include "vast/util/meta.h"
 
 namespace vast {
 
 /// Typed representation of data.
-class value
-{
+class value {
   friend access;
 
 public:
@@ -16,14 +20,14 @@ public:
   /// @param d The data for the value.
   /// @param t The type *d* shall have.
   /// @returns If `t.check(d)` then a value containing *d* and `nil` otherwise.
-  static value make(vast::data d, vast::type t)
-  {
+  static value make(vast::data d, vast::type t) {
     return t.check(d) ? value{std::move(d), std::move(t)} : nil;
   }
 
   /// Constructs an invalid value.
   /// Same as default-construction, but also enables statements like `v = nil`.
-  value(none = nil) {}
+  value(none = nil) {
+  }
 
   /// Constructs an untyped value.
   /// @param x The data for the value.
@@ -35,17 +39,13 @@ public:
     >
   >
   value(T&& x)
-    : data_{std::forward<T>(x)}
-  {
+    : data_{std::forward<T>(x)} {
   }
 
   /// Constructs a typed value from data.
   /// @param d The data for the value.
   /// @param t The type of *d*.
-  value(vast::data d, vast::type t)
-    : data_{std::move(d)},
-      type_{std::move(t)}
-  {
+  value(vast::data d, vast::type t) : data_{std::move(d)}, type_{std::move(t)} {
   }
 
   /// Constructs a typed value from anything convertible to data.
@@ -55,13 +55,13 @@ public:
   /// @post If `! t.check(d)` then `*this = nil`.
   template <typename T>
   value(T&& x, vast::type t)
-    : value{vast::data(std::forward<T>(x)), std::move(t)}
-  {
+    : value{vast::data(std::forward<T>(x)), std::move(t)} {
   }
 
   /// Constructs an untyped value.
   /// @param x The data to construct the value from.
-  value(vast::data x) : data_{std::move(x)} {}
+  value(vast::data x) : data_{std::move(x)} {
+  }
 
   friend bool operator==(value const& lhs, value const& rhs);
   friend bool operator!=(value const& lhs, value const& rhs);
@@ -81,10 +81,7 @@ public:
 
   /// Retrieves the data of the value.
   /// @returns The value data.
-  vast::data const& data() const
-  {
-    return data_;
-  }
+  vast::data const& data() const;
 
   friend vast::data::variant_type& expose(value& v);
   friend vast::data::variant_type const& expose(value const& v);
@@ -93,42 +90,6 @@ private:
   vast::data data_;
   vast::type type_;
 };
-
-template <typename Iterator>
-trial<void> print(value const& v, Iterator&& out)
-{
-  return print(v.data(), out);
-}
-
-template <typename Iterator>
-trial<void> parse(value& v, Iterator& begin, Iterator end,
-                  type t = {},
-                  std::string const& set_sep = ", ",
-                  std::string const& set_left = "{",
-                  std::string const& set_right = "}",
-                  std::string const& vec_sep = ", ",
-                  std::string const& vec_left = "[",
-                  std::string const& vec_right = "]",
-                  std::string const& rec_sep = ", ",
-                  std::string const& rec_left = "(",
-                  std::string const& rec_right = ")",
-                  std::string const& esc = "\\")
-{
-  data d;
-  auto p = parse(d, begin, end, t,
-                 set_sep, set_left, set_right,
-                 vec_sep, vec_left, vec_right,
-                 rec_sep, rec_left, rec_right,
-                 esc);
-  if (! p)
-    return p;
-
-  v = {std::move(d), std::move(t)};
-
-  return nothing;
-}
-
-trial<void> convert(value const& v, util::json& j);
 
 } // namespace vast
 

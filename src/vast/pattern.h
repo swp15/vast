@@ -2,18 +2,15 @@
 #define VAST_PATTERN_H
 
 #include <string>
-#include "vast/parse.h"
-#include "vast/print.h"
+
 #include "vast/util/operators.h"
 
 namespace vast {
 
 struct access;
-namespace util { class json; }
 
 /// A regular expression.
-class pattern : util::totally_ordered<pattern>
-{
+class pattern : util::totally_ordered<pattern> {
   friend access;
 
 public:
@@ -48,44 +45,9 @@ public:
   /// @returns `true` if the pattern matches inside *str*.
   bool search(std::string const& str) const;
 
-  template <typename Iterator>
-  friend trial<void> print(pattern const& p, Iterator&& out)
-  {
-    *out++ = '/';
-
-    auto t = print(p.str_, out);
-    if (! t)
-      return t.error();
-
-    *out++ = '/';
-
-    return nothing;
-  }
-
-  template <typename Iterator>
-  friend trial<void> parse(pattern& p, Iterator& begin, Iterator end)
-  {
-    if (*begin != '/')
-      return error{"pattern did not begin with a '/'"};
-
-    auto t = parse<std::string>(begin, end);
-    if (! t)
-      return t.error();
-
-    if (t->empty() || (*t)[t->size() - 1] != '/')
-      return error{"pattern did not end with a '/'"};
-
-    p = pattern{t->substr(1, t->size() - 2)};
-
-    begin = end;
-    return nothing;
-  }
-
 private:
   std::string str_;
 };
-
-trial<void> convert(pattern const& p, util::json& j);
 
 } // namespace vast
 

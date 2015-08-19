@@ -2,33 +2,32 @@
 #define VAST_KEY_H
 
 #include <string>
-#include "vast/print.h"
-#include "vast/parse.h"
-#include "vast/util/string.h"
+
+#include "vast/concept/printable/string.h"
+#include "vast/concept/printable/to_string.h"
 #include "vast/util/stack/vector.h"
 
 namespace vast {
 
-/// A sequence of type/argument names to recursively access a type or value.
-struct key : util::stack::vector<4, std::string>
-{
-  using util::stack::vector<4, std::string>::vector;
+/// A sequence of names identifying a resource.
+struct key : util::stack::vector<4, std::string> {
+  using super = util::stack::vector<4, std::string>;
+  using super::vector;
 
-  template <typename Iterator>
-  friend trial<void> parse(key& k, Iterator& begin, Iterator end)
-  {
-    for (auto& str : util::to_strings(util::split(begin, end, ".")))
-      k.push_back(std::move(str));
-    return nothing;
-  }
-
-  template <typename Iterator>
-  friend trial<void> print(key const& k, Iterator&& out)
-  {
-    return print_delimited('.', k.begin(), k.end(), out);
-  }
+  /// Creates a key string reprentation of an arbitrary sequence.
+  template <typename... Ts>
+  static std::string str(Ts&&... xs);
 };
 
 } // namespace vast
+
+#include "vast/concept/printable/vast/key.h"
+
+template <typename... Ts>
+std::string vast::key::str(Ts&&... xs) {
+  using vast::to_string;
+  using std::to_string;
+  return to_string(key{to_string(xs)...});
+}
 
 #endif

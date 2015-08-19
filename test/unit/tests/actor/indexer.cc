@@ -1,4 +1,7 @@
 #include "vast/actor/indexer.h"
+#include "vast/concept/printable/vast/error.h"
+#include "vast/concept/printable/vast/event.h"
+#include "vast/concept/printable/vast/expression.h"
 #include "vast/actor/task.h"
 
 #define SUITE actors
@@ -18,10 +21,9 @@ TEST(indexer)
   t1.name("test-real-event");
   size_t n = 1000;
   std::vector<event> events(n);
-  for (size_t i = 0; i < n; ++i)
-  {
+  for (size_t i = 0; i < n; ++i) {
     if (i % 2 == 0)
-      events[i] = event::make(record{i, to_string(i)}, t0);
+      events[i] = event::make(record{i, std::to_string(i)}, t0);
     else
       events[i] = event::make(4.2 + i, t1);
     events[i].id(i);
@@ -48,8 +50,7 @@ TEST(indexer)
   self->send(t, i0);
   self->send(i0, expression{pred}, self, t);
   self->receive(
-    [&](expression const& expr, bitstream_type const& hit)
-    {
+    [&](expression const& expr, bitstream_type const& hit) {
       CHECK(expr == expression{pred});
       CHECK(hit.find_first() == 0);
       CHECK(hit.count() == 100 / 2); // Every other event in [0,100).
@@ -62,8 +63,7 @@ TEST(indexer)
   self->send(t, i1);
   self->send(i1, expression{pred}, self, t);
   self->receive(
-    [&](expression const& expr, bitstream_type const& hit)
-    {
+    [&](expression const& expr, bitstream_type const& hit) {
       CHECK(expr == expression{pred});
       CHECK(hit.find_first() == 1);
       CHECK(hit.count() == 19);
@@ -96,8 +96,7 @@ TEST(indexer)
   self->send(t, i0);
   self->send(i0, expression{pred}, self, t);
   self->receive(
-    [&](expression const& expr, bitstream_type const& hit)
-    {
+    [&](expression const& expr, bitstream_type const& hit) {
       CHECK(expr == expression{pred});
       CHECK(hit.find_first() == 998u);
       CHECK(hit.count() == 1);

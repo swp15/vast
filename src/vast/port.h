@@ -1,32 +1,23 @@
 #ifndef VAST_PORT_H
 #define VAST_PORT_H
 
-#include <iosfwd>
-#include <cstring>
-#include <string>
-#include "vast/fwd.h"
-#include "vast/parse.h"
-#include "vast/print.h"
+#include <cstdint>
+
 #include "vast/util/operators.h"
 
 namespace vast {
 
+struct access;
+
 /// A transport-layer port.
-class port : util::totally_ordered<port>
-{
+class port : util::totally_ordered<port> {
   friend access;
 
 public:
   using number_type = uint16_t;
 
   /// The transport layer type.
-  enum port_type : uint8_t
-  {
-    unknown,
-    tcp,
-    udp,
-    icmp
-  };
+  enum port_type : uint8_t { unknown, tcp, udp, icmp };
 
   /// Constructs the empty port, i.e., @c 0/unknown.
   port() = default;
@@ -55,67 +46,10 @@ public:
   /// @param t The new port type.
   void type(port_type t);
 
-  template <typename Iterator>
-  friend trial<void> parse(port& prt, Iterator& begin, Iterator end)
-  {
-    // Longest port: 42000/unknown = 5 + 1 + 7 = 13 bytes plus NUL.
-    char buf[16];
-    auto p = buf;
-    while (*begin != '/' && std::isdigit(*begin) && begin != end
-           && p - buf < 16)
-      *p++ = *begin++;
-
-    auto lval = buf;
-    auto t = parse_positive_decimal(prt.number_, lval, p);
-    if (! t)
-      return t.error();
-
-    if (begin == end || *begin++ != '/')
-      return nothing;
-
-    p = buf;
-    while (begin != end && p < &buf[7])
-      *p++ = *begin++;
-    *p = '\0';
-
-    if (! std::strncmp(buf, "tcp", 3))
-      prt.type_ = port::tcp;
-    else if (! std::strncmp(buf, "udp", 3))
-      prt.type_ = port::udp;
-    else if (! std::strncmp(buf, "icmp", 4))
-      prt.type_ = port::icmp;
-
-    return nothing;
-  }
-
-  template <typename Iterator>
-  friend trial<void> print(port const& p, Iterator&& out)
-  {
-    auto t = print(p.number_, out);
-    if (! t)
-      return t.error();
-
-    *out++ = '/';
-
-    switch (p.type())
-    {
-      default:
-        return print('?', out);
-      case port::tcp:
-        return print("tcp", out);
-      case port::udp:
-        return print("udp", out);
-      case port::icmp:
-        return print("icmp", out);
-    }
-  }
-
 private:
   number_type number_ = 0;
   port_type type_ = unknown;
 };
-
-trial<void> convert(port const& p, util::json& j);
 
 } // namespace vast
 

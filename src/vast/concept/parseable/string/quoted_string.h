@@ -11,22 +11,19 @@
 namespace vast {
 
 template <char Quote, char Esc = '\\'>
-class quoted_string_parser : public parser<quoted_string_parser<Quote, Esc>>
-{
+class quoted_string_parser : public parser<quoted_string_parser<Quote, Esc>> {
 public:
   using attribute = std::string;
 
   quoted_string_parser() = default;
 
-  static auto make()
-  {
+  static auto make() {
     auto escaped_quote = Esc >> char_parser{Quote};
-    return Quote >> +(escaped_quote | (print_parser{} - Quote)) >> Quote;
+    return Quote >> +(escaped_quote | (parsers::print - Quote)) >> Quote;
   }
 
   template <typename Iterator, typename Attribute>
-  bool parse(Iterator& f, Iterator const& l, Attribute& a) const
-  {
+  bool parse(Iterator& f, Iterator const& l, Attribute& a) const {
     static auto p = make();
     return p.parse(f, l, a);
   }
@@ -34,10 +31,16 @@ public:
 
 namespace parsers {
 
-using q_str = quoted_string_parser<'\'', '\\'>;
-using qq_str = quoted_string_parser<'"', '\\'>;
+auto const q_str = quoted_string_parser<'\'', '\\'>{};
+auto const qq_str = quoted_string_parser<'"', '\\'>{};
 
-} // namespace parasers
+} // namespace parsers
+
+template <>
+struct parser_registry<std::string> {
+  using type = quoted_string_parser<'"', '\\'>;
+};
+
 } // namespace vast
 
 #endif

@@ -12,29 +12,27 @@ using namespace vast;
 
 namespace fixtures {
 
-struct core
-{
-  core()
-  {
-    if (exists(dir))
-    {
+struct core {
+  core() {
+    self->on_sync_failure([&] {
+      VAST_ERROR("got unexpected reply:", to_string(self->current_message()));
+      self->quit(exit::error);
+    });
+    if (exists(dir)) {
       MESSAGE("removing existing directory");
       REQUIRE(rm(dir));
     }
   }
 
-  ~core()
-  {
+  ~core() {
     self->await_all_other_actors_done();
-    if (exists(dir))
-    {
+    if (exists(dir)) {
       MESSAGE("removing created directory");
       REQUIRE(rm(dir));
     }
   }
 
-  actor make_core()
-  {
+  actor make_core() {
     auto n = self->spawn<node>(node_name, dir);
     std::vector<message> msgs = {
       make_message("spawn", "archive", "-s", "1"),
@@ -46,51 +44,60 @@ struct core
       make_message("connect", "importer", "index"),
     };
     for (auto& msg : msgs)
-      self->sync_send(n, msg).await([](ok_atom) {});
+      self->sync_send(n, msg).await(
+        [&](error const& e) {
+          FAIL(e);
+        },
+        // Everyting except an error is a valid return value.
+        others >> [] {}
+      );
     return n;
   }
 
-  void stop_core(actor const& n)
-  {
-    // Assume all sources have terminated. Then we stop the IMPORTER. After
-    // getting notified that it terminated, we can guarantee that ARCHIVE and
-    // INDEX have received all their events.
-    self->sync_send(n, get_atom::value, "importer").await(
-      [&](actor const& a, std::string const& fqn, std::string const& type)
-      {
-        CHECK(fqn == "importer@" + node_name);
-        CHECK(type == "importer");
-        REQUIRE(a != invalid_actor);
-        self->monitor(a);
-        self->send_exit(a, exit::done);
+  void stop_core(actor const& n) {
+    MESSAGE("stopping node");
+    self->monitor(n);
+    self->send_exit(n, exit::stop);
+    self->receive(
+      [&](down_msg const& msg) {
+        CHECK(msg.source == n->address());
       }
     );
-    self->receive([&](down_msg const& dm) { CHECK(dm.reason == exit::done); });
-    self->sync_send(n, "stop").await([](ok_atom) {});
   }
 
   template <typename... Args>
-  void run_source(actor const& n, Args&&... args)
-  {
+  void run_source(actor const& n, Args&&... args) {
     std::vector<message> msgs = {
       make_message("spawn", "source", std::forward<Args>(args)...),
       make_message("connect", "source", "importer"),
       make_message("send", "source", "run")
     };
     for (auto& msg : msgs)
-      self->sync_send(n, msg).await([](ok_atom) {});
+      self->sync_send(n, msg).await(
+        [&](error const& e) {
+          FAIL(e);
+        },
+        others >> [] {
+          // Everyting except error is a valid return value.
+        }
+      );
     MESSAGE("monitoring source");
-    self->sync_send(n, get_atom::value, "source").await(
-      [&](actor const& a, std::string const& fqn, std::string const& type)
-      {
+    self->sync_send(n, store_atom::value, get_atom::value, actor_atom::value,
+                    "source").await(
+      [&](actor const& a, std::string const& fqn, std::string const& type) {
+        CHECK(a != invalid_actor);
         CHECK(fqn == "source@" + node_name);
         CHECK(type == "source");
-        REQUIRE(a != invalid_actor);
         self->monitor(a);
+        MESSAGE("waiting for source to terminate");
+        self->receive(
+          [&](down_msg const& dm) { CHECK(dm.reason == exit::done); }
+        );
+      },
+      [](vast::none) {
+        // source has already terminated.
       }
     );
-    MESSAGE("waiting for source to terminate");
-    self->receive([&](down_msg const& dm) { CHECK(dm.reason == exit::done); });
   }
 
   std::string const node_name = "test-node";

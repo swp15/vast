@@ -14,8 +14,7 @@ using namespace vast;
 
 FIXTURE_SCOPE(fixture_scope, fixtures::simple_events)
 
-TEST(partition)
-{
+TEST(partition) {
   using bitstream_type = partition::bitstream_type;
 
   MESSAGE("sending events to partition");
@@ -36,19 +35,17 @@ TEST(partition)
 
   MESSAGE("reloading partition and running a query against it");
   p = self->spawn<partition, monitored+priority_aware>(dir, self);
-  auto expr = to<expression>("&time < now && c >= 42 && c < 84");
+  auto expr = vast::detail::to_expression("&time < now && c >= 42 && c < 84");
   REQUIRE(expr);
   self->send(p, *expr, historical_atom::value);
   bool done = false;
   bitstream_type hits;
   self->do_receive(
-    [&](expression const& e, bitstream_type const& h, historical_atom)
-    {
+    [&](expression const& e, bitstream_type const& h, historical_atom) {
       CHECK(*expr == e);
       hits |= h;
     },
-    [&](done_atom, time::moment, expression const& e)
-    {
+    [&](done_atom, time::moment, expression const& e) {
       CHECK(*expr == e);
       done = true;
     }
@@ -56,7 +53,7 @@ TEST(partition)
   CHECK(hits.count() == 42);
 
   MESSAGE("creating a continuous query");
-  expr = to<expression>("s ni \"7\"");  // Must be normalized at this point.
+  expr = vast::detail::to_expression("s ni \"7\"");
   REQUIRE(expr);
   self->send(p, *expr, continuous_atom::value);
 
@@ -67,8 +64,7 @@ TEST(partition)
 
   MESSAGE("getting continuous hits");
   self->receive(
-    [&](expression const& e, bitstream_type const& hits, continuous_atom)
-    {
+    [&](expression const& e, bitstream_type const& hits, continuous_atom) {
       CHECK(*expr == e);
       // (0..1024)
       //   .select{|x| x % 2 == 0}
@@ -80,7 +76,7 @@ TEST(partition)
 
   MESSAGE("disabling continuous query and sending another event");
   self->send(p, *expr, continuous_atom::value, disable_atom::value);
-  auto e = event::make(record{1337u, to_string(1337)}, type0);
+  auto e = event::make(record{1337u, std::to_string(1337)}, type0);
   e.id(4711);
   t = self->spawn<task, monitored>(time::snapshot(), 1ull);
   self->send(p, std::vector<event>{std::move(e)}, t);

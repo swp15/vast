@@ -1,61 +1,81 @@
 #ifndef VAST_DATA_H
 #define VAST_DATA_H
 
+#include <iterator>
 #include <regex>
 #include <string>
 #include <vector>
 #include <map>
 #include <type_traits>
+
 #include "vast/aliases.h"
 #include "vast/address.h"
 #include "vast/pattern.h"
 #include "vast/subnet.h"
 #include "vast/port.h"
 #include "vast/none.h"
+#include "vast/offset.h"
 #include "vast/optional.h"
 #include "vast/time.h"
 #include "vast/type.h"
+#include "vast/trial.h"
 #include "vast/util/flat_set.h"
 #include "vast/util/meta.h"
-#include "vast/util/parse.h"
-#include "vast/util/print.h"
 #include "vast/util/string.h"
 
 namespace vast {
 
 class data;
 
-class vector : public std::vector<data>
-{
+class vector : public std::vector<data> {
+  using super = std::vector<vast::data>;
+
 public:
-  using std::vector<vast::data>::vector;
+  using super::vector;
+
+  vector() = default;
+
+  explicit vector(super v) : super{std::move(v)} {
+  }
 };
 
-class set : public util::flat_set<data>
-{
+class set : public util::flat_set<data> {
+  using super = util::flat_set<vast::data>;
+
 public:
-  using util::flat_set<vast::data>::flat_set;
+  using super::flat_set;
+
+  set() = default;
+
+  explicit set(super s) : super(std::move(s)) {
+  }
+
+  explicit set(std::vector<vast::data>& v)
+    : super(std::make_move_iterator(v.begin()),
+            std::make_move_iterator(v.end())) {
+  }
+
+  explicit set(std::vector<vast::data> const& v) 
+    : super(v.begin(), v.end()) {
+  }
 };
 
-class table : public std::map<data, data>
-{
+class table : public std::map<data, data> {
+  using super = std::map<vast::data, vast::data>;
+
 public:
-  using std::map<vast::data, vast::data>::map;
+  using super::map;
 };
 
-class record : public std::vector<data>
-{
-public:
-  using std::vector<vast::data>::vector;
-  using std::vector<vast::data>::at;
+class record : public std::vector<data> {
+  using super = std::vector<vast::data>;
 
+public:
   /// Enables recursive record iteration.
-  class each : public util::range_facade<each>
-  {
+  class each : public util::range_facade<each> {
   public:
-    struct range_state
-    {
-      vast::data const& operator*() const;
+    struct range_state {
+      vast::data const& data() const;
       util::stack::vector<8, vast::data const*> trace;
       vast::offset offset;
     };
@@ -65,8 +85,7 @@ public:
   private:
     friend util::range_facade<each>;
 
-    range_state const& state() const
-    {
+    range_state const& state() const {
       return state_;
     }
 
@@ -75,6 +94,15 @@ public:
     range_state state_;
     util::stack::vector<8, record const*> records_;
   };
+
+  using super::vector;
+
+  record() = default;
+
+  explicit record(super v) : super{std::move(v)} {
+  }
+
+  using super::at;
 
   /// Retrieves a data at a givene offset.
   /// @param o The offset to look at.
@@ -220,8 +248,13 @@ public:
     >
   >
   data(T&& x)
-    : data_(type<T>(std::forward<T>(x)))
-  {
+    : data_(type<T>(std::forward<T>(x))) {
+  }
+
+  /// Constructs optional data.
+  template <typename T>
+  data(optional<T>&& o)
+    : data{o ? std::move(*o) : data{nil}} {
   }
 
   friend bool operator==(data const& lhs, data const& rhs);
@@ -237,407 +270,6 @@ public:
 private:
   variant_type data_;
 };
-
-//
-// Printable Concept
-//
-
-namespace detail {
-
-template <typename Iterator>
-struct data_printer
-{
-  data_printer(Iterator& out)
-    : out_{out}
-  {
-  }
-
-  trial<void> operator()(none const&) const
-  {
-    return print("<nil>", out_);
-  }
-
-  template <typename T>
-  trial<void> operator()(T const& x) const
-  {
-    return print(x, out_);
-  }
-
-  trial<void> operator()(std::string const& str) const
-  {
-    *out_++ = '"';
-
-    auto t = print(util::byte_escape(str), out_);
-    if (! t)
-      return t.error();
-
-    *out_++ = '"';
-
-    return nothing;
-  }
-
-  Iterator& out_;
-};
-
-} // namespace detail
-
-template <typename Iterator>
-trial<void> print(data const& d, Iterator&& out)
-{
-  return visit(detail::data_printer<Iterator>(out), d);
-}
-
-template <typename Iterator>
-trial<void> print(vector const& v, Iterator&& out, char const* delim = ", ")
-{
-  *out++ = '[';
-
-  auto t = util::print_delimited(delim, v.begin(), v.end(), out);
-  if (! t)
-    return t.error();
-
-  *out++ = ']';
-
-  return nothing;
-}
-
-template <typename Iterator>
-trial<void> print(set const& s, Iterator&& out, char const* delim = ", ")
-{
-  *out++ = '{';
-
-  auto t = util::print_delimited(delim, s.begin(), s.end(), out);
-  if (! t)
-    return t.error();
-
-  *out++ = '}';
-
-  return nothing;
-}
-
-template <typename Iterator>
-trial<void> print(table const& tab, Iterator&& out)
-{
-  *out++ = '{';
-  auto first = tab.begin();
-  auto last = tab.end();
-  while (first != last)
-  {
-    auto t = print(first->first, out);
-    if (! t)
-      return t.error();
-
-    t = print(" -> ", out);
-    if (! t)
-      return t.error();
-
-    t = print(first->second, out);
-    if (! t)
-      return t.error();
-
-    if (++first != last)
-    {
-      t = print(", ", out);
-      if (! t)
-        return t.error();
-    }
-  }
-
-  *out++ = '}';
-
-  return nothing;
-}
-
-template <typename Iterator>
-trial<void> print(record const& r, Iterator&& out, char const* delim = ", ")
-{
-  *out++ = '(';
-
-  auto t = util::print_delimited(delim, r.begin(), r.end(), out);
-  if (! t)
-    return t.error();
-
-  *out++ = ')';
-
-  return nothing;
-}
-
-//
-// Parsable Concept
-//
-
-template <typename Iterator>
-trial<void> parse(vector& v, Iterator& begin, Iterator end,
-                  type const& elem_type,
-                  std::string const& sep = ", ",
-                  std::string const& left = "[",
-                  std::string const& right = "]",
-                  std::string const& esc = "\\")
-{
-  if (begin == end)
-    return error{"empty iterator range"};
-
-  if (static_cast<size_t>(end - begin) < left.size() + right.size())
-    return error{"no boundaries present"};
-
-  if (! util::starts_with(begin, end, left))
-    return error{"left boundary does not match"};
-
-  if (! util::ends_with(begin, end, right))
-    return error{"right boundary does not match"};
-
-  auto s = util::split(begin + left.size(), end - right.size(), sep, esc);
-  for (auto& p : s)
-  {
-    auto t = parse<data>(p.first, p.second, elem_type);
-    if (t)
-      v.push_back(std::move(*t));
-    else
-      return t.error();
-  }
-
-  begin = end;
-  return nothing;
-}
-
-template <typename Iterator>
-trial<void> parse(set& s, Iterator& begin, Iterator end,
-                  type const& elem_type,
-                  std::string const& sep = ", ",
-                  std::string const& left = "{",
-                  std::string const& right = "}",
-                  std::string const& esc = "\\")
-{
-  if (begin == end)
-    return error{"empty iterator range"};
-
-  if (static_cast<size_t>(end - begin) < left.size() + right.size())
-    return error{"no boundaries present"};
-
-  if (! util::starts_with(begin, end, left))
-    return error{"left boundary does not match"};
-
-  if (! util::ends_with(begin, end, right))
-    return error{"right boundary does not match"};
-
-  auto split = util::split(begin + left.size(), end - right.size(), sep, esc);
-  for (auto& p : split)
-  {
-    auto t = parse<data>(p.first, p.second, elem_type);
-    if (t)
-      s.insert(std::move(*t));
-    else
-      return t.error();
-  }
-
-  begin = end;
-  return nothing;
-}
-
-template <typename Iterator>
-trial<void> parse(record& r, Iterator& begin, Iterator end,
-                  type::record const& rec_type,
-                  std::string const& sep = ", ",
-                  std::string const& left = "(",
-                  std::string const& right = ")",
-                  std::string const& esc = "\\")
-{
-  if (begin == end)
-    return error{"empty iterator range"};
-
-  if (static_cast<size_t>(end - begin) < left.size() + right.size())
-    return error{"no boundaries present"};
-
-  if (! util::starts_with(begin, end, left))
-    return error{"left boundary does not match"};
-
-  if (! util::ends_with(begin, end, right))
-    return error{"right boundary does not match"};
-
-  auto s = util::split(begin + left.size(), end - right.size(), sep, esc);
-  if (s.size() != rec_type.fields().size())
-    return error{"number of fields don't match provided type"};
-
-  for (size_t i = 0; i < s.size(); ++i)
-  {
-    auto t = parse<data>(s[i].first, s[i].second, rec_type.fields()[i].type);
-    if (t)
-      r.push_back(std::move(*t));
-    else
-      return t.error();
-  }
-
-  begin = end;
-  return nothing;
-}
-
-namespace detail {
-
-template <typename Iterator>
-class data_parser
-{
-public:
-  data_parser(data& d, Iterator& begin, Iterator end,
-              std::string const& set_sep,
-              std::string const& set_left,
-              std::string const& set_right,
-              std::string const& vec_sep,
-              std::string const& vec_left,
-              std::string const& vec_right,
-              std::string const& rec_sep,
-              std::string const& rec_left,
-              std::string const& rec_right,
-              std::string const& esc)
-    : d_{d},
-      begin_{begin},
-      end_{end},
-      set_sep_{set_sep},
-      set_left_{set_left},
-      set_right_{set_right},
-      vec_sep_{vec_sep},
-      vec_left_{vec_left},
-      vec_right_{vec_right},
-      rec_sep_{rec_sep},
-      rec_left_{rec_left},
-      rec_right_{rec_right},
-      esc_{esc}
-  {
-  }
-
-  template <
-    typename T,
-    typename = std::enable_if_t<type::is_basic<T>::value>
-  >
-  trial<void> operator()(T const&) const
-  {
-    return data_parse<type::to_data<T>>();
-  }
-
-  trial<void> operator()(none const&) const
-  {
-    return error{"cannot parse a none type"};
-  }
-
-  trial<void> operator()(type::enumeration const&) const
-  {
-    return error{"cannot parse an enum type"};
-  }
-
-  trial<void> operator()(type::vector const& t) const
-  {
-    return data_parse<vector>(t.elem(), vec_sep_, vec_left_, vec_right_, esc_);
-  }
-
-  trial<void> operator()(type::set const& t) const
-  {
-    return data_parse<set>(t.elem(), set_sep_, set_left_, set_right_, esc_);
-  }
-
-  trial<void> operator()(type::table const&) const
-  {
-    return error{"cannot parse tables (yet)"};
-  }
-
-  trial<void> operator()(type::record const& t) const
-  {
-    return data_parse<record>(t, rec_sep_, rec_left_, rec_right_, esc_);
-  }
-
-  trial<void> operator()(type::alias const& a) const
-  {
-    return visit(*this, a.type());
-  }
-
-  template <typename T, typename... Args>
-  trial<void> data_parse(Args&&... args) const
-  {
-    T x;
-    auto t = parse(x, begin_, end_, std::forward<Args>(args)...);
-    if (! t)
-      return t.error();
-
-    d_ = data{std::move(x)};
-
-    return nothing;
-  }
-
-private:
-  data& d_;
-  Iterator& begin_;
-  Iterator end_;
-  std::string const& set_sep_;
-  std::string const& set_left_;
-  std::string const& set_right_;
-  std::string const& vec_sep_;
-  std::string const& vec_left_;
-  std::string const& vec_right_;
-  std::string const& rec_sep_;
-  std::string const& rec_left_;
-  std::string const& rec_right_;
-  std::string const& esc_;
-};
-
-} // namespace detail
-} // namespace vast
-
-// These require a complete definition of the class data.
-#include "vast/detail/parser/data.h"
-#include "vast/detail/parser/skipper.h"
-
-namespace vast {
-namespace detail {
-
-template <typename Iterator>
-trial<void> parse(data& d, Iterator& begin, Iterator end)
-{
-  detail::parser::data<Iterator> grammar;
-  detail::parser::skipper<Iterator> skipper;
-
-  if (phrase_parse(begin, end, grammar, skipper, d) && begin == end)
-    return nothing;
-  else
-    return error{"failed to parse data"};
-}
-
-} // namespace detail
-} // namespace vast
-
-namespace vast {
-
-template <typename Iterator>
-trial<void> parse(data& d, Iterator& begin, Iterator end,
-                  type const& t = {},
-                  std::string const& set_sep = ", ",
-                  std::string const& set_left = "{",
-                  std::string const& set_right = "}",
-                  std::string const& vec_sep = ", ",
-                  std::string const& vec_left = "[",
-                  std::string const& vec_right = "]",
-                  std::string const& rec_sep = ", ",
-                  std::string const& rec_left = "(",
-                  std::string const& rec_right = ")",
-                  std::string const& esc = "\\")
-{
-  if (is<none>(t))
-    return detail::parse(d, begin, end);
-
-  detail::data_parser<Iterator> p{d, begin, end,
-                                  set_sep, set_left, set_right,
-                                  vec_sep, vec_left, vec_right,
-                                  rec_sep, rec_left, rec_right,
-                                  esc};
-  return visit(p, t);
-}
-
-//
-// Conversion
-//
-
-trial<void> convert(vector const& v, util::json& j);
-trial<void> convert(set const& v, util::json& j);
-trial<void> convert(table const& v, util::json& j);
-trial<void> convert(record const& v, util::json& j);
-trial<void> convert(data const& v, util::json& j);
 
 } // namespace vast
 

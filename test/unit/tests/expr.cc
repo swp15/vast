@@ -5,7 +5,13 @@
 #include "vast/expr/evaluator.h"
 #include "vast/expr/resolver.h"
 #include "vast/expr/normalize.h"
-#include "vast/concept/serializable/expression.h"
+#include "vast/concept/parseable/to.h"
+#include "vast/concept/parseable/vast/time.h"
+#include "vast/concept/parseable/vast/detail/to_expression.h"
+#include "vast/concept/parseable/vast/detail/to_schema.h"
+#include "vast/concept/printable/to_string.h"
+#include "vast/concept/printable/vast/expression.h"
+#include "vast/concept/serializable/vast/expression.h"
 #include "vast/concept/serializable/io.h"
 
 #define SUITE expression
@@ -13,8 +19,7 @@
 
 using namespace vast;
 
-TEST(construction)
-{
+TEST(construction) {
   predicate p0{time_extractor{}, less_equal,
                data{time::point::utc(1983, 8, 12)}};
   predicate p1{event_extractor{}, equal, data{"foo"}};
@@ -28,8 +33,7 @@ TEST(construction)
   CHECK(*get<data>(get<predicate>(c->at(1))->rhs) == "foo");
 }
 
-TEST(serialization)
-{
+TEST(serialization) {
   predicate p0{event_extractor{}, in, data{"foo"}};
   predicate p1{type_extractor{}, equal, data{time::point::utc(1983, 8, 12)}};
   expression expr{disjunction{p0, p1}};
@@ -42,8 +46,7 @@ TEST(serialization)
   CHECK(to_string(expr), str);
 }
 
-TEST(parser_tests)
-{
+TEST(parser tests) {
   // Event tags.
   CHECK(detail::to_expression("&type == \"foo\""));
   CHECK(detail::to_expression("&time < now - 5d10m3s"));
@@ -68,27 +71,27 @@ TEST(parser_tests)
   // Groups
   CHECK(detail::to_expression("(:real > 4.2)"));
   CHECK(detail::to_expression(":real > 4.2 && (:time < now || :port == 53/?)"));
-  CHECK(detail::to_expression("(:real > 4.2 && ! (:time < now || :port == 53/?))"));
+  CHECK(
+    detail::to_expression("(:real > 4.2 && ! (:time < now || :port == 53/?))"));
 
   // Invalid type name.
-  CHECK(! detail::to_expression(":foo == -42"));
+  CHECK(!detail::to_expression(":foo == -42"));
 }
 
-TEST(event_evaluation)
-{
-  std::string str =
-    "type foo = record"
-    "{"
-    "  s1: string,"
-    "  d1: real,"
-    "  c: count,"
-    "  i: int,"
-    "  s2: string,"
-    "  d2: real"
-    "}"
-    "type bar = record { s1: string, r : record { b: bool, s: string } }";
+TEST(event evaluation) {
+  std::string str
+    = "type foo = record"
+      "{"
+      "  s1: string,"
+      "  d1: real,"
+      "  c: count,"
+      "  i: int,"
+      "  s2: string,"
+      "  d2: real"
+      "}"
+      "type bar = record { s1: string, r : record { b: bool, s: string } }";
 
-  auto sch = to<schema>(str);
+  auto sch = detail::to_schema(str);
   REQUIRE(sch);
 
   auto foo = sch->find_type("foo");
@@ -104,7 +107,7 @@ TEST(event_evaluation)
   //
 
   event e;
-  auto tp = to<time::point>("2014-01-16+05:30:12", time::point::format);
+  auto tp = to<time::point>("2014-01-16+05:30:12");
   REQUIRE(tp);
   e.timestamp(*tp);
   auto t = type::alias{type{}};
@@ -125,7 +128,7 @@ TEST(event_evaluation)
 
   ast = detail::to_expression("&type != \"foo\"");
   REQUIRE(ast);
-  CHECK(! visit(expr::event_evaluator{e}, *ast));
+  CHECK(!visit(expr::event_evaluator{e}, *ast));
 
   //
   // Type queries
@@ -133,33 +136,43 @@ TEST(event_evaluation)
 
   ast = detail::to_expression(":count == 42");
   REQUIRE(ast);
-  CHECK(visit(expr::event_evaluator{e0}, visit(expr::type_resolver{*foo}, *ast)));
-  CHECK(! visit(expr::event_evaluator{e1}, visit(expr::type_resolver{*bar}, *ast)));
+  CHECK(
+    visit(expr::event_evaluator{e0}, visit(expr::type_resolver{*foo}, *ast)));
+  CHECK(
+    !visit(expr::event_evaluator{e1}, visit(expr::type_resolver{*bar}, *ast)));
 
   ast = detail::to_expression(":int != +101");
   REQUIRE(ast);
-  CHECK(visit(expr::event_evaluator{e0}, visit(expr::type_resolver{*foo}, *ast)));
-  CHECK(! visit(expr::event_evaluator{e1}, visit(expr::type_resolver{*bar}, *ast)));
+  CHECK(
+    visit(expr::event_evaluator{e0}, visit(expr::type_resolver{*foo}, *ast)));
+  CHECK(
+    !visit(expr::event_evaluator{e1}, visit(expr::type_resolver{*bar}, *ast)));
 
   ast = detail::to_expression(":string ~ /bar/ && :int == +100");
   REQUIRE(ast);
-  CHECK(visit(expr::event_evaluator{e0}, visit(expr::type_resolver{*foo}, *ast)));
-  CHECK(! visit(expr::event_evaluator{e1}, visit(expr::type_resolver{*bar}, *ast)));
+  CHECK(
+    visit(expr::event_evaluator{e0}, visit(expr::type_resolver{*foo}, *ast)));
+  CHECK(
+    !visit(expr::event_evaluator{e1}, visit(expr::type_resolver{*bar}, *ast)));
 
   ast = detail::to_expression(":real >= -4.8");
   REQUIRE(ast);
-  CHECK(visit(expr::event_evaluator{e0}, visit(expr::type_resolver{*foo}, *ast)));
-  CHECK(! visit(expr::event_evaluator{e1}, visit(expr::type_resolver{*bar}, *ast)));
+  CHECK(
+    visit(expr::event_evaluator{e0}, visit(expr::type_resolver{*foo}, *ast)));
+  CHECK(
+    !visit(expr::event_evaluator{e1}, visit(expr::type_resolver{*bar}, *ast)));
 
   ast = detail::to_expression(
-      ":int <= -3 || :int >= +100 && :string !~ /bar/ || :real > 1.0");
+    ":int <= -3 || :int >= +100 && :string !~ /bar/ || :real > 1.0");
   REQUIRE(ast);
-  CHECK(visit(expr::event_evaluator{e0}, visit(expr::type_resolver{*foo}, *ast)));
+  CHECK(
+    visit(expr::event_evaluator{e0}, visit(expr::type_resolver{*foo}, *ast)));
 
   // For the event of type "bar", this expression degenerates to
   // <nil> because it has no numeric types and the first predicate of the
   // conjunction in the middle renders the entire conjunction not viable.
-  CHECK(! visit(expr::event_evaluator{e1}, visit(expr::type_resolver{*bar}, *ast)));
+  CHECK(
+    !visit(expr::event_evaluator{e1}, visit(expr::type_resolver{*bar}, *ast)));
 
   //
   // Schema queries
@@ -171,7 +184,7 @@ TEST(event_evaluation)
   auto schema_resolved = visit(expr::schema_resolver{*foo}, *ast);
   REQUIRE(schema_resolved);
   CHECK(visit(expr::event_evaluator{e0}, *schema_resolved));
-  CHECK(! visit(expr::event_evaluator{e1}, *schema_resolved));
+  CHECK(!visit(expr::event_evaluator{e1}, *schema_resolved));
 
   ast = detail::to_expression("s1 != \"cheetah\"");
   REQUIRE(ast);
@@ -187,7 +200,7 @@ TEST(event_evaluation)
   schema_resolved = visit(expr::schema_resolver{*foo}, *ast);
   REQUIRE(schema_resolved);
   CHECK(visit(expr::event_evaluator{e0}, *schema_resolved));
-  CHECK(! visit(expr::event_evaluator{e1}, *schema_resolved));
+  CHECK(!visit(expr::event_evaluator{e1}, *schema_resolved));
 
   ast = detail::to_expression("r.b == F");
   REQUIRE(ast);
@@ -214,8 +227,7 @@ TEST(event_evaluation)
   CHECK(is<none>(*schema_resolved));
 }
 
-TEST(AST_normalization)
-{
+TEST(AST normalization) {
   VAST_INFO("ensuring extractor position on LHS");
   auto expr = detail::to_expression("\"foo\" in bar");
   auto normalized = detail::to_expression("bar ni \"foo\"");

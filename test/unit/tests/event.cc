@@ -1,15 +1,19 @@
 #include "vast/event.h"
-#include "vast/concept/serializable/value.h"
+#include "vast/json.h"
+#include "vast/concept/convertible/vast/event.h"
+#include "vast/concept/convertible/to.h"
+#include "vast/concept/serializable/vast/value.h"
+#include "vast/concept/printable/to_string.h"
+#include "vast/concept/printable/vast/event.h"
+#include "vast/concept/printable/vast/json.h"
 #include "vast/concept/state/event.h"
 #include "vast/concept/serializable/io.h"
-#include "vast/util/json.h"
 
 #include "test.h"
 
 using namespace vast;
 
-TEST(event)
-{
+TEST(event) {
   auto tr = type::record{
     {"x", type::boolean{}},
     {"y", type::count{}},
@@ -46,21 +50,21 @@ TEST(event)
   load(buf, e2);
   CHECK(e == e2);
 
-  auto t = to<util::json>(e);
+  auto t = to<json>(e);
   REQUIRE(t);
 
   auto tree = R"json({
   "id": 123456789,
   "timestamp": 0,
   "value": {
-    "data": [
-      true,
-      42,
-      -234987
-    ],
-    "type": "foo"
+    "data": {
+      "x": true,
+      "y": 42,
+      "z": -234987
+    },
+    "type": "foo = record {x: bool, y: count, z: int}"
   }
 })json";
 
-  CHECK(to_string(*t, true) == tree);
+  CHECK(to_string(*t) == tree);
 }

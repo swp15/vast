@@ -15,12 +15,9 @@
 namespace vast {
 
 /// Accepts chunks and constructs segments.
-struct archive : flow_controlled_actor
-{
-  struct chunk_compare
-  {
-    bool operator()(chunk const& lhs, chunk const& rhs) const
-    {
+struct archive : flow_controlled_actor {
+  struct chunk_compare {
+    bool operator()(chunk const& lhs, chunk const& rhs) const {
       return lhs.meta().ids.find_first() < rhs.meta().ids.find_first();
     };
   };
@@ -36,7 +33,7 @@ struct archive : flow_controlled_actor
   archive(path dir, size_t capacity, size_t max_segment_size,
           io::compression = io::lz4);
 
-  void on_exit();
+  void on_exit() override;
   caf::behavior make_behavior() override;
 
   trial<void> store(segment s);

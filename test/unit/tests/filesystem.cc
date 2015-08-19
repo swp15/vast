@@ -1,5 +1,4 @@
 #include "vast/filesystem.h"
-#include "vast/print.h"
 #include "vast/util/system.h"
 
 #define SUITE filesystem
@@ -7,8 +6,7 @@
 
 using namespace vast;
 
-TEST(path_operations)
-{
+TEST(path_operations) {
   path p(".");
   CHECK(p.basename() == ".");
   CHECK(p.extension() == ".");
@@ -119,8 +117,7 @@ TEST(path_operations)
   CHECK(pieces[4] == "foo");
 }
 
-TEST(path_trimming)
-{
+TEST(path_trimming) {
   path p = "/usr/local/bin/foo";
 
   CHECK(p.trim(0) == "");
@@ -138,8 +135,7 @@ TEST(path_trimming)
   CHECK(p.trim(-6) == p);
 }
 
-TEST(path_chopping)
-{
+TEST(path_chopping) {
   path p = "/usr/local/bin/foo";
 
   CHECK(p.chop(0) == p);
@@ -155,21 +151,18 @@ TEST(path_chopping)
   CHECK(p.chop(5) == "");
 }
 
-TEST(file_and_directory_manipulation)
-{
-  using std::to_string;
-
+TEST(file_and_directory_manipulation) {
   path base = "vast-unit-test-file-system-test";
   path p("/tmp");
-  p /= base / to_string(util::process_id());
-  CHECK(! p.is_regular_file());
-  CHECK(! exists(p));
+  p /= base / std::to_string(util::process_id());
+  CHECK(!p.is_regular_file());
+  CHECK(!exists(p));
   CHECK(mkdir(p));
   CHECK(exists(p));
   CHECK(p.is_directory());
   CHECK(rm(p));
-  CHECK(! p.is_directory());
+  CHECK(!p.is_directory());
   CHECK(p.parent().is_directory());
   CHECK(rm(p.parent()));
-  CHECK(! p.parent().is_directory());
+  CHECK(!p.parent().is_directory());
 }

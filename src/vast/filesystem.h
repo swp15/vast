@@ -10,9 +10,7 @@
 #include <functional>
 #include <string>
 #include <vector>
-#include "vast/fwd.h"
-#include "vast/parse.h"
-#include "vast/print.h"
+
 #include "vast/trial.h"
 #include "vast/util/iterator.h"
 #include "vast/util/operators.h"
@@ -24,8 +22,7 @@ struct access;
 /// A filesystem path abstraction.
 class path : util::totally_ordered<path>,
              util::addable<path>,
-             util::dividable<path>
-{
+             util::dividable<path> {
   friend access;
 
 public:
@@ -39,8 +36,7 @@ public:
   static constexpr size_t max_len = 1024;
 
   /// The type of a file.
-  enum type
-  {
+  enum type {
     unknown,
     regular_file,
     directory,
@@ -135,12 +131,6 @@ public:
   friend bool operator==(path const& x, path const& y);
   friend bool operator<(path const& x, path const& y);
 
-  template <typename Iterator>
-  friend trial<void> print(path const& p, Iterator&& out)
-  {
-    return print(p.str_, out);
-  }
-
 private:
   std::string str_;
 };
@@ -148,13 +138,12 @@ private:
 constexpr bool close_on_destruction = true;
 
 /// A simple file abstraction.
-class file
-{
+class file {
   file(file const&) = delete;
   file& operator=(file const&) = delete;
 
 public:
-  /// The native type of a file.
+/// The native type of a file.
 #ifdef VAST_POSIX
   typedef int native_type;
 #else
@@ -162,8 +151,7 @@ public:
 #endif
 
   /// The mode in which to open a file.
-  enum open_mode
-  {
+  enum open_mode {
     invalid,
     read_only,
     write_only,
@@ -183,8 +171,7 @@ public:
   /// @param close_behavior Whether to close or leave open the file handle upon
   ///                       destruction.
   /// @pre The file identified via *handle* is open.
-  file(native_type handle,
-       bool close_behavior = close_on_destruction,
+  file(native_type handle, bool close_behavior = close_on_destruction,
        vast::path p = {});
 
   file(file&&) = default;
@@ -239,15 +226,14 @@ public:
 
 private:
   native_type handle_;
-  bool close_on_destruction_ = ! close_on_destruction;
+  bool close_on_destruction_ = !close_on_destruction;
   bool is_open_ = false;
   bool seek_failed_ = false;
   vast::path path_;
 };
 
 /// An ordered sequence of all the directory entries in a particular directory.
-class directory
-{
+class directory {
 public:
   using const_iterator =
     class iterator
@@ -256,8 +242,7 @@ public:
           std::input_iterator_tag,
           path const&,
           path const&
-        >
-  {
+        > {
   public:
     iterator(directory* dir = nullptr);
 
@@ -322,28 +307,13 @@ void traverse(path const& p, std::function<bool(path const&)> f);
 // @returns The contents of the file *p*.
 trial<std::string> load_contents(path const& p);
 
-// Loads file contents and attempts to parse them as a specific type.
-// @param p The path of the file to load.
-// @param opts Options to the parsing function of *T*.
-template <typename T, typename... Opts>
-trial<T> load_and_parse(path const& p, Opts&&... opts)
-{
-  auto t = load_contents(p);
-  if (! t)
-    return t.error();
-  auto first = t->begin();
-  return parse<T>(first, t->end(), std::forward<Opts>(opts)...);
-}
-
 } // namespace vast
 
 namespace std {
 
 template <>
-struct hash<vast::path>
-{
-  size_t operator()(vast::path const& p) const
-  {
+struct hash<vast::path> {
+  size_t operator()(vast::path const& p) const {
     return hash<std::string>{}(p.str());
   }
 };

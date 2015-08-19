@@ -1,48 +1,48 @@
 #include "vast/filesystem.h"
 #include "vast/schema.h"
-#include "vast/concept/serializable/schema.h"
 #include "vast/concept/serializable/io.h"
-#include "vast/util/convert.h"
+#include "vast/concept/serializable/vast/schema.h"
+#include "vast/concept/parseable/vast/detail/to_schema.h"
+#include "vast/concept/printable/stream.h"
+#include "vast/concept/printable/vast/error.h"
+#include "vast/concept/printable/vast/schema.h"
 
 #define SUITE schema
 #include "test.h"
 
 using namespace vast;
 
-#define DEFINE_SCHEMA_TEST_CASE(name, input)                        \
-  TEST(name)                                                        \
-  {                                                                 \
-    auto contents = load_contents(input);                           \
-    REQUIRE(contents);                                              \
-    auto lval = contents->begin();                                  \
-    auto s0 = parse<schema>(lval, contents->end());                 \
-    if (! s0)                                                       \
-      std::cout << s0.error() << std::endl;                         \
-    REQUIRE(s0);                                                    \
-                                                                    \
-    auto str = to_string(*s0);                                      \
-    lval = str.begin();                                             \
-    auto s1 = parse<schema>(lval, str.end());                       \
-    if (! s1)                                                       \
-      std::cout << s1.error() << std::endl;                         \
-    REQUIRE(s1);                                                    \
-    CHECK(str == to_string(*s1));                                   \
+#define DEFINE_SCHEMA_TEST_CASE(name, input)                                   \
+  TEST(name) {                                                                 \
+    auto contents = load_contents(input);                                      \
+    REQUIRE(contents);                                                         \
+    auto s0 = detail::to_schema(*contents);                                    \
+    if (!s0)                                                                   \
+      ERROR(s0.error());                                                       \
+    REQUIRE(s0);                                                               \
+                                                                               \
+    auto str = to_string(*s0);                                                 \
+    auto s1 = detail::to_schema(str);                                          \
+    if (!s1) {                                                                 \
+      ERROR(s1.error());                                                       \
+      ERROR("schema: " << str);                                                \
+    }                                                                          \
+    REQUIRE(s1);                                                               \
+    CHECK(str == to_string(*s1));                                              \
   }
 
 // Contains the test case defintions for all taxonomy test files.
 #include "tests/schema_test_cases.h"
 
-TEST(offset finding)
-{
-  std::string str =
-    "type a = int\n"
-    "type inner = record{ x: int, y: real }\n"
-    "type middle = record{ a: int, b: inner }\n"
-    "type outer = record{ a: middle, b: record { y: string }, c: int }\n"
-    "type foo = record{ a: int, b: real, c: outer, d: middle }";
+TEST(offset finding) {
+  std::string str
+    = "type a = int\n"
+      "type inner = record{ x: int, y: real }\n"
+      "type middle = record{ a: int, b: inner }\n"
+      "type outer = record{ a: middle, b: record { y: string }, c: int }\n"
+      "type foo = record{ a: int, b: real, c: outer, d: middle }";
 
-  auto lval = str.begin();
-  auto sch = parse<schema>(lval, str.end());
+  auto sch = detail::to_schema(str);
   REQUIRE(sch);
 
   auto foo = sch->find_type("foo");
@@ -65,22 +65,19 @@ TEST(offset finding)
   CHECK(inner->name() == "inner");
 }
 
-TEST(merging)
-{
-  std::string str =
-    "type a = int\n"
-    "type inner = record { x: int, y: real }\n";
+TEST(merging) {
+  std::string str
+    = "type a = int\n"
+      "type inner = record { x: int, y: real }\n";
 
-  auto lval = str.begin();
-  auto s1 = parse<schema>(lval, str.end());
+  auto s1 = detail::to_schema(str);
   REQUIRE(s1);
 
-  str =
-    "type a = int\n"  // Same type allowed.
-    "type b = int\n";
+  str
+    = "type a = int\n" // Same type allowed.
+      "type b = int\n";
 
-  lval = str.begin();
-  auto s2 = parse<schema>(lval, str.end());
+  auto s2 = detail::to_schema(str);
   REQUIRE(s2);
 
   auto merged = schema::merge(*s1, *s2);
@@ -90,8 +87,7 @@ TEST(merging)
   CHECK(merged->find_type("inner"));
 }
 
-TEST(serialization)
-{
+TEST(serialization) {
   schema sch, sch2;
   auto t = type::record{
     {"s1", type::string{}},

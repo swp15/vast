@@ -3,14 +3,11 @@
 
 #include <cstdint>
 #include <string>
-#include "vast/fwd.h"
-#include "vast/print.h"
 
 namespace vast {
 
 /// An arithmetic operator.
-enum arithmetic_operator : uint8_t
-{
+enum arithmetic_operator : uint8_t {
   // Unary
   positive,
   negative,
@@ -26,41 +23,8 @@ enum arithmetic_operator : uint8_t
   mod
 };
 
-template <typename Iterator>
-trial<void> print(arithmetic_operator op, Iterator&& out)
-{
-  switch (op)
-  {
-    default:
-      throw std::logic_error("missing case for arithmetic operator");
-    case positive:
-    case plus:
-      return print('+', out);
-    case minus:
-    case negative:
-      return print('-', out);
-    case bitwise_not:
-      return print('~', out);
-    case bitwise_or:
-      return print('|', out);
-    case bitwise_xor:
-      return print('^', out);
-    case bitwise_and:
-      return print('|', out);
-    case times:
-      return print('*', out);
-    case divides:
-      return print('/', out);
-    case mod:
-      return print('%', out);
-  }
-
-  return nothing;
-}
-
 /// A (binary) relational operator.
-enum relational_operator : uint8_t
-{
+enum relational_operator : uint8_t {
   match,
   not_match,
   in,
@@ -75,68 +39,8 @@ enum relational_operator : uint8_t
   greater_equal
 };
 
-template <typename Iterator>
-trial<void> print(relational_operator op, Iterator&& out)
-{
-  switch (op)
-  {
-    default:
-      throw std::logic_error("missing case for relational operator");
-    case match:
-      return print('~', out);
-    case not_match:
-      return print("!~", out);
-    case in:
-      return print("in", out);
-    case not_in:
-      return print("!in", out);
-    case ni:
-      return print("ni", out);
-    case not_ni:
-      return print("!ni", out);
-    case equal:
-      return print("==", out);
-    case not_equal:
-      return print("!=", out);
-    case less:
-      return print('<', out);
-    case less_equal:
-      return print("<=", out);
-    case greater:
-      return print('>', out);
-    case greater_equal:
-      return print(">=", out);
-  }
-
-  return nothing;
-}
-
-
-/// A boolean operator.
-enum boolean_operator : uint8_t
-{
-  logical_not,
-  logical_and,
-  logical_or
-};
-
-template <typename Iterator>
-trial<void> print(boolean_operator op, Iterator&& out)
-{
-  switch (op)
-  {
-    default:
-      throw std::logic_error("missing case for boolean operator");
-    case logical_not:
-      return print("!", out);
-    case logical_and:
-      return print("&&", out);
-    case logical_or:
-      return print("||", out);
-  }
-
-  return nothing;
-}
+/// A boolean operator taking on the values AND, OR, and NOT.
+enum boolean_operator : uint8_t { logical_not, logical_and, logical_or };
 
 /// Negates a relational operator, i.e., creates the complementary operator.
 /// @param op The operator to negate.
@@ -150,6 +54,6 @@ relational_operator negate(relational_operator op);
 /// @returns The flipped operator.
 relational_operator flip(relational_operator op);
 
-} // namespace
+} // namespace vast
 
 #endif

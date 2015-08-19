@@ -1,14 +1,17 @@
-#include "vast/util/convert.h"
-#include "vast/util/json.h"
+#include "vast/json.h"
+#include "vast/concept/parseable/vast/json.h"
+#include "vast/concept/printable/numeric.h"
+#include "vast/concept/printable/to_string.h"
+#include "vast/concept/printable/vast/json.h"
+#include "vast/concept/convertible/to.h"
 
-#define SUITE util
+#define SUITE json
 #include "test.h"
 
 using namespace vast;
-using namespace util;
+using namespace std::string_literals;
 
-TEST(JSON_construction_assignment)
-{
+TEST(construction and assignment) {
   CHECK(which(json{}) == json::type::null);
   CHECK(which(json{nil}) == json::type::null);
 
@@ -52,8 +55,7 @@ TEST(JSON_construction_assignment)
   CHECK(is<json::object>(j));
 }
 
-TEST(JSON_total_order)
-{
+TEST(total order) {
   json j0{true};
   json j1{false};
 
@@ -69,68 +71,110 @@ TEST(JSON_total_order)
   j1 = 42;
 
   CHECK(j0 != j1);
-  CHECK(! (j0 < j1));
-  CHECK(! (j0 <= j1));
+  CHECK(!(j0 < j1));
+  CHECK(!(j0 <= j1));
   CHECK(j0 > j1);
   CHECK(j0 >= j1);
 }
 
-TEST(JSON_printing)
-{
+TEST(parsing) {
+  json j;
   std::string str;
-  auto out = std::back_inserter(str);
 
-  CHECK(print(json{}, out));
-  CHECK(str == "null");
-  str.clear();
+  MESSAGE("bool");
+  str = "true";
+  CHECK(parsers::json(str, j));
+  CHECK(j == true);
+  str = "false";
+  CHECK(parsers::json(str, j));
+  CHECK(j == false);
 
-  CHECK(print(json{true}, out));
-  CHECK(str == "true");
-  str.clear();
+  MESSAGE("null");
+  str = "null";
+  CHECK(parsers::json(str, j));
+  CHECK(j == nil);
 
-  CHECK(print(json{false}, out));
-  CHECK(str == "false");
-  str.clear();
+  MESSAGE("number");
+  str = "42";
+  CHECK(parsers::json(str, j));
+  CHECK(j == json::number{42});
+  str = "-1337";
+  CHECK(parsers::json(str, j));
+  CHECK(j == json::number{-1337});
+  str = "4.2";
+  CHECK(parsers::json(str, j));
+  CHECK(j == json::number{4.2});
 
-  CHECK(print(json{42}, out));
-  CHECK(str == "42");
-  str.clear();
+  MESSAGE("string");
+  str = "\"foo\"";
+  CHECK(parsers::json(str, j));
+  CHECK(j == "foo");
 
-  CHECK(print(json{42.0}, out));
-  CHECK(str == "42");
-  str.clear();
+  MESSAGE("array");
+  str = "[]";
+  CHECK(parsers::json(str, j));
+  CHECK(j == json::array{});
+  str = "[    ]";
+  CHECK(parsers::json(str, j));
+  CHECK(j == json::array{});
+  str = "[ 42,-1337 , \"foo\", null ,true ]"s;
+  CHECK(parsers::json(str, j));
+  CHECK(j == json::array{42, -1337, "foo", nil, true});
 
-  CHECK(print(json{4.2}, out));
-  CHECK(str == "4.2");
-  str.clear();
+  MESSAGE("object");
+  str = "{}";
+  CHECK(parsers::json(str, j));
+  CHECK(j == json::object{});
+  str = "{    }";
+  CHECK(parsers::json(str, j));
+  CHECK(j == json::object{});
+  str = R"json({ "baz": 4.2, "inner": null })json";
+  CHECK(parsers::json(str, j));
+  CHECK(j == json::object{{"baz", 4.2}, {"inner", nil}});
+  str = R"json({
+  "baz": 4.2,
+  "inner": null,
+  "x": [
+    42,
+    -1337,
+    "foo",
+    true
+  ]
+})json";
+  CHECK(parsers::json(str, j));
+  auto o = json::object{
+    {"baz", 4.2},
+    {"inner", nil},
+    {"x", json::array{42, -1337, "foo", true}}
+  };
+  CHECK(j == o);
+}
 
-  CHECK(print(json{"foo"}, out));
-  CHECK(str == "\"foo\"");
-  str.clear();
+TEST(printing) {
+  CHECK(to_string(json{}) == "null");
+  CHECK(to_string(json{true}) == "true");
+  CHECK(to_string(json{false}) == "false");
+  CHECK(to_string(json{42}) == "42");
+  CHECK(to_string(json{42.0}) == "42");
+  CHECK(to_string(json{4.2}) == "4.2");
+  CHECK(to_string(json{"foo"}) == "\"foo\"");
 
-  std::string foo{"foo"};
-  CHECK(print(json{foo}, out));
-  CHECK(str == "\"foo\"");
-  str.clear();
-
+  std::string line;
   json::array a{42, -1337, "foo", nil, true};
-  CHECK(print(json{a}, out));
-  CHECK(str == "[42, -1337, \"foo\", null, true]");
-  str.clear();
+  CHECK(printers::json<policy::oneline>(line, json{a}));
+  CHECK(line == "[42, -1337, \"foo\", null, true]");
 
   json::object o;
   o["foo"] = 42;
   o["bar"] = nil;
-
-  // We use a std::map, which orders the keys alphabetically.
-  CHECK(print(json{std::move(o)}, out));
-  CHECK(str == "{\"bar\": null, \"foo\": 42}");
-  str.clear();
+  line.clear();
+  CHECK(printers::json<policy::oneline>(line, json{o}));
+  CHECK(line == "{\"bar\": null, \"foo\": 42}");
 
   o = {{"baz", 4.2}};
-  CHECK(print(json{std::move(o)}, out));
-  CHECK(str == "{\"baz\": 4.2}");
-  str.clear();
+  line.clear();
+  CHECK(printers::json<policy::oneline>(line, json{o}));
+  CHECK(line == "{\"baz\": 4.2}");
 
   o = {
     {"baz", 4.2},
@@ -138,7 +182,7 @@ TEST(JSON_printing)
     {"inner", json::object{{"a", false}, {"b", 42}, {"c", a}}}
   };
 
-  auto tree = R"json({
+  auto json_tree = R"json({
   "baz": 4.2,
   "inner": {
     "a": false,
@@ -160,12 +204,12 @@ TEST(JSON_printing)
   ]
 })json";
 
-  CHECK(to_string(o, true) == tree);
-  str.clear();
+  std::string str;
+  CHECK(printers::json<policy::tree>(str, json{o}));
+  CHECK(str == json_tree);
 }
 
-TEST(JSON_conversion)
-{
+TEST(conversion) {
   auto t = to<json>(true);
   REQUIRE(t);
   CHECK(*t == json{true});
@@ -182,7 +226,7 @@ TEST(JSON_conversion)
   REQUIRE(t);
   CHECK(*t == json::array{1, 2, 3});
 
-  t = to<json>(std::map<int, bool>{{1, true}, {2, false}});
+  t = to<json>(std::map<unsigned, bool>{{1, true}, {2, false}});
   REQUIRE(t);
   CHECK(*t == json::object{{"1", true}, {"2", false}});
 }

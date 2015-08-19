@@ -4,41 +4,23 @@
 #include <vector>
 
 #include "vast/concept/parseable/core/parser.h"
+#include "vast/concept/parseable/detail/container.h"
 
 namespace vast {
 
 template <typename Parser>
-class kleene_parser : public parser<kleene_parser<Parser>>
-{
+class kleene_parser : public parser<kleene_parser<Parser>> {
 public:
-  using attribute = std::vector<typename Parser::attribute>;
+  using container = detail::container<typename Parser::attribute>;
+  using attribute = typename container::attribute;
 
-  kleene_parser(Parser const& p)
-    : parser_{p}
-  {
-  }
-
-  template <typename Iterator>
-  bool parse(Iterator& f, Iterator const& l, unused_type&) const
-  {
-    auto save = f;
-    while (parser_.parse(f, l, unused))
-      save = f;
-    f = save;
-    return true;
+  explicit kleene_parser(Parser p) : parser_{std::move(p)} {
   }
 
   template <typename Iterator, typename Attribute>
-  bool parse(Iterator& f, Iterator const& l, Attribute& a) const
-  {
-    auto save = f;
-    typename Parser::attribute elem;
-    while (parser_.parse(f, l, elem))
-    {
-      a.push_back(std::move(elem));
-      save = f;
-    }
-    f = save;
+  bool parse(Iterator& f, Iterator const& l, Attribute& a) const {
+    while (container::parse(parser_, f, l, a))
+      ;
     return true;
   }
 

@@ -4,54 +4,25 @@
 #include <vector>
 
 #include "vast/concept/parseable/core/parser.h"
+#include "vast/concept/parseable/detail/container.h"
 
 namespace vast {
 
 template <typename Parser>
-class plus_parser : public parser<plus_parser<Parser>>
-{
+class plus_parser : public parser<plus_parser<Parser>> {
 public:
-  using attribute = std::vector<typename Parser::attribute>;
+  using container = detail::container<typename Parser::attribute>;
+  using attribute = typename container::attribute;
 
-  plus_parser(Parser const& p)
-    : parser_{p}
-  {
-  }
-
-  template <typename Iterator>
-  bool parse(Iterator& f, Iterator const& l, unused_type&) const
-  {
-    auto save = f;
-    if (! parser_.parse(f, l, unused))
-    {
-      f = save;
-      return false;
-    }
-    save = f;
-    while (parser_.parse(f, l, unused))
-      save = f;
-    f = save;
-    return true;
+  explicit plus_parser(Parser p) : parser_{std::move(p)} {
   }
 
   template <typename Iterator, typename Attribute>
-  bool parse(Iterator& f, Iterator const& l, Attribute& a) const
-  {
-    auto save = f;
-    typename Parser::attribute elem;
-    if (! parser_.parse(f, l, elem))
-    {
-      f = save;
+  bool parse(Iterator& f, Iterator const& l, Attribute& a) const {
+    if (!container::parse(parser_, f, l, a))
       return false;
-    }
-    a.push_back(std::move(elem));
-    save = f;
-    while (parser_.parse(f, l, elem))
-    {
-      a.push_back(std::move(elem));
-      save = f;
-    }
-    f = save;
+    while (container::parse(parser_, f, l, a))
+      ;
     return true;
   }
 

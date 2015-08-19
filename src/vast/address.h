@@ -3,8 +3,7 @@
 
 #include <array>
 #include <string>
-#include "vast/fwd.h"
-#include "vast/print.h"
+
 #include "vast/util/operators.h"
 
 namespace vast {
@@ -12,9 +11,7 @@ namespace vast {
 struct access;
 
 /// An IP address.
-class address : util::totally_ordered<address>,
-                util::bitwise<address>
-{
+class address : util::totally_ordered<address>, util::bitwise<address> {
   friend access;
 
   /// Top 96 bits of v4-mapped-addr.
@@ -22,18 +19,10 @@ class address : util::totally_ordered<address>,
 
 public:
   /// Address family.
-  enum family
-  {
-    ipv4,
-    ipv6
-  };
+  enum family { ipv4, ipv6 };
 
   /// Address byte order.
-  enum byte_order
-  {
-    host,
-    network
-  };
+  enum byte_order { host, network };
 
   /// Default-constructs an (invalid) address.
   address();
@@ -103,37 +92,9 @@ public:
   /// @returns A reference to an array of 16 bytes.
   std::array<uint8_t, 16> const& data() const;
 
-  template <typename Iterator>
-  friend trial<void> print(address const& a, Iterator&& out)
-  {
-    return print(to_string(a), out);
-  }
-
-  friend std::string to_string(address const& a);
-
 private:
   std::array<uint8_t, 16> bytes_;
 };
-
-trial<void> convert(address const& a, util::json& j);
-
-} // namespace vast
-
-#include "vast/concept/parseable/core/parse.h"
-#include "vast/concept/parseable/vast/address.h"
-
-namespace vast {
-
-// TODO: remove after conversion to new parseable concept.
-template <typename Iterator>
-trial<void> parse(address& a, Iterator& begin, Iterator end)
-{
-  using vast::parse;
-  if (parse(begin, end, a))
-    return nothing;
-  else
-    return error{"failed to parse address", std::string{begin, end}};
-}
 
 } // namespace vast
 

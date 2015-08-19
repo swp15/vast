@@ -8,6 +8,8 @@
 #include "vast/query_options.h"
 #include "vast/uuid.h"
 #include "vast/actor/task.h"
+#include "vast/concept/printable/vast/error.h"
+#include "vast/concept/printable/vast/expression.h"
 
 #define SUITE actors
 #include "test.h"
@@ -19,8 +21,7 @@ using namespace vast;
 
 FIXTURE_SCOPE(core_scope, fixtures::core)
 
-TEST(export)
-{
+TEST(export) {
   MESSAGE("inhaling a Bro SSL log");
   auto n = make_core();
   run_source(n, "bro", "-b", "10", "-r", m57_day11_18::ssl);
@@ -29,17 +30,16 @@ TEST(export)
 
   MESSAGE("testing whether archive has the correct chunk");
   n = make_core();
-  self->sync_send(n, get_atom::value, "archive").await(
-    [&](actor const& a, std::string const& fqn, std::string const& type)
-    {
+  self->sync_send(n, store_atom::value, get_atom::value, actor_atom::value,
+                  "archive").await(
+    [&](actor const& a, std::string const& fqn, std::string const& type) {
       CHECK(fqn == "archive@" + node_name);
       CHECK(type == "archive");
       REQUIRE(a != invalid_actor);
       self->send(a, event_id{112});
     }
   );
-  self->receive([&](chunk const& chk)
-  {
+  self->receive([&](chunk const& chk) {
     MESSAGE("checking chunk integrity");
     // The ssl.log has a total of 113 events and we use batches of 10. So
     // the last chunk has three events in [110, 112].
@@ -54,11 +54,11 @@ TEST(export)
   });
 
   MESSAGE("performing manual index lookup");
-  auto pops = to<expression>("id.resp_p == 995/?");
+  auto pops = vast::detail::to_expression("id.resp_p == 995/?");
   REQUIRE(pops);
-  self->sync_send(n, get_atom::value, "index").await(
-    [&](actor const& a, std::string const& fqn, std::string const& type)
-    {
+  self->sync_send(n, store_atom::value, get_atom::value, actor_atom::value,
+                  "index").await(
+    [&](actor const& a, std::string const& fqn, std::string const& type) {
       CHECK(fqn == "index@" + node_name);
       CHECK(type == "index");
       REQUIRE(a != invalid_actor);
@@ -66,61 +66,62 @@ TEST(export)
     }
   );
   MESSAGE("retrieving lookup task");
-  self->receive([&](actor const& task)
-  {
+  self->receive([&](actor const& task) {
     self->send(task, subscriber_atom::value, self);
   });
   MESSAGE("getting hits");
   auto done = false;
   self->do_receive(
-    [&](default_bitstream const& hits)
-    {
+    [&](default_bitstream const& hits) {
       CHECK(hits.count() > 0);
     },
-    [&](done_atom, time::extent, expression const& expr)
-    {
+    [&](done_atom, time::extent, expression const& expr) {
       done = true;
       CHECK(expr == *pops);
     },
-    [&](progress_atom, uint64_t remaining, uint64_t total)
-    {
+    [&](progress_atom, uint64_t remaining, uint64_t total) {
       // The task we receive from INDEX consists of 12 stages, because we
       // imported the ssl.log with 113 entries in batches of 10, which yields
       // 11 full partitions and 1 partial one of 3, i.e., 11 + 1 = 12.
       if (remaining == 0)
         CHECK(total == 12);
     },
-    others() >> [&]
-    {
+    others >> [&] {
       ERROR("got unexpected message from " << self->current_sender() <<
             ": " << to_string(self->current_message()));
-    }).until([&] { return done; });
+    }
+  ).until([&] { return done; });
 
   MESSAGE("performing index lookup via exporter");
+  actor exp;
+  self->sync_send(n, "spawn", "exporter", "-h", "id.resp_p == 995/?").await(
+    [&](actor const& a) {
+      exp = a;
+    },
+    [&](error const& e) {
+      FAIL(e);
+    }
+  );
+  REQUIRE(exp != invalid_actor);
   std::vector<message> msgs = {
-    make_message("spawn", "exporter", "-h", "id.resp_p == 995/?"),
     make_message("connect", "exporter", "archive"),
     make_message("connect", "exporter", "index")
   };
   for (auto& msg : msgs)
-    self->sync_send(n, msg).await([](ok_atom) {});
-  self->sync_send(n, get_atom::value, "exporter").await(
-    [&](actor const& a, std::string const& fqn, std::string const& type)
-    {
-      CHECK(fqn == "exporter@" + node_name);
-      CHECK(type == "exporter");
-      REQUIRE(a != invalid_actor);
-      self->send(a, put_atom::value, sink_atom::value, self);
-      self->send(a, run_atom::value);
-      self->send(a, extract_atom::value, uint64_t{46});
-    }
-  );
+    self->sync_send(n, msg).await(
+      [](ok_atom) {},
+      [&](error const& e) {
+        ERROR(e);
+      }
+    );
+  self->send(exp, put_atom::value, sink_atom::value, self);
+  self->send(exp, run_atom::value);
+  self->send(exp, extract_atom::value, max_events);
   MESSAGE("verifying query results");
   auto i = 0;
   done = false;
   self->do_receive(
-    [&](uuid const&, event const& e)
-    {
+    [&](uuid const&, event const& e) {
       ++i;
       // Verify contents of a few random events.
       if (e.id() == 3)
@@ -134,21 +135,18 @@ TEST(export)
       if (e.id() == 102)
         CHECK(get<record>(e)->at(1) == "mXRBhfuUqag");
     },
-    [&](uuid const&, progress_atom, double, uint64_t)
-    {
-      // nop
-    },
-    [&](uuid const&, done_atom, time::extent)
-    {
+    [&](uuid const&, progress_atom, double, uint64_t) { /* nop */ },
+    [&](uuid const&, done_atom, time::extent) {
       CHECK(i == 46);
       done = true;
     },
-    others() >> [&]
-    {
+    others >> [&] {
       ERROR("got unexpected message from " << self->current_sender() <<
             ": " << to_string(self->current_message()));
-    }).until([&] { return done; });
+    }
+  ).until([&] { return done; });
 
+  self->send_exit(exp, exit::done);
   stop_core(n);
   self->await_all_other_actors_done();
 
@@ -160,55 +158,45 @@ TEST(export)
 
   MESSAGE("issuing query against conn.log and ssl.log");
   n = make_core();
-  auto q = "id.resp_p == 443/? && \"mozilla\" in ssl.server_name";
   msgs = {
-    make_message("spawn", "exporter", "-h", q),
     make_message("connect", "exporter", "archive"),
     make_message("connect", "exporter", "index")
   };
-  for (auto& msg : msgs)
-    self->sync_send(n, msg).await([](ok_atom) {});
-  self->sync_send(n, get_atom::value, "exporter").await(
-    [&](actor const& a, std::string const& fqn, std::string const& type)
-    {
-      CHECK(fqn == "exporter@" + node_name);
-      CHECK(type == "exporter");
-      REQUIRE(a != invalid_actor);
-      self->send(a, put_atom::value, sink_atom::value, self);
-      self->send(a, run_atom::value);
-      self->send(a, extract_atom::value, uint64_t{0});
-      self->monitor(a);
+  auto q = "id.resp_p == 443/? && \"mozilla\" in bro::ssl.server_name";
+  exp = invalid_actor;
+  self->sync_send(n, "spawn", "exporter", "-h", q).await(
+    [&](actor const& a) {
+      exp = a;
+    },
+    [&](error const& e) {
+      FAIL(e);
     }
   );
-
+  REQUIRE(exp != invalid_actor);
+  for (auto& msg : msgs)
+    self->sync_send(n, msg).await([](ok_atom) {});
+  self->send(exp, put_atom::value, sink_atom::value, self);
+  self->send(exp, run_atom::value);
+  self->send(exp, extract_atom::value, max_events);
   MESSAGE("processing query results");
   i = 0;
   done = false;
   self->do_receive(
-    [&](uuid const&, event const&)
-    {
+    [&](uuid const&, event const&) {
       ++i;
     },
-    [&](uuid const&, progress_atom, double, uint64_t)
-    {
-      // nop
-    },
-    [&](uuid const&, done_atom, time::extent)
-    {
+    [&](uuid const&, progress_atom, double, uint64_t) { /* nop */ },
+    [&](uuid const&, done_atom, time::extent) {
       CHECK(i == 15);
-    },
-    [&](down_msg const& msg)
-    {
-      // Query terminates after having extracted all events.
-      CHECK(msg.reason == exit::done);
       done = true;
     },
-    others() >> [&]
-    {
+    others() >> [&] {
       ERROR("got unexpected message from " << self->current_sender() <<
             ": " << to_string(self->current_message()));
-    }).until([&done] { return done; });
+    }
+  ).until([&done] { return done; });
 
+  self->send_exit(exp, exit::done);
   stop_core(n);
 }
 

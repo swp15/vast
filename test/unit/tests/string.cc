@@ -6,29 +6,33 @@
 using namespace vast;
 using namespace util;
 
-TEST(string byte escaping)
-{
+TEST(string byte escaping) {
   // Identities.
   CHECK(byte_escape("") == "");
   CHECK(byte_escape("foo") == "foo");
   CHECK(byte_escape("foo bar") == "foo bar");
+
+  CHECK(byte_escape("foobar", "o") == "f\\o\\obar");
 
   CHECK(byte_escape("foob\ar") == "foob\\x07r");
   CHECK(byte_escape("foo\tbar") == "foo\\x09bar");
   CHECK(byte_escape("foo\nbar") == "foo\\x0abar");
   CHECK(byte_escape("foo\r\nbar") == "foo\\x0d\\x0abar");
 
+  CHECK(byte_unescape("f\\o\\obar") == "foobar");
+
   CHECK(byte_unescape("foob\\x07r") == "foob\ar");
   CHECK(byte_unescape("foo\\x09bar") == "foo\tbar");
   CHECK(byte_unescape("foo\\x0abar") == "foo\nbar");
   CHECK(byte_unescape("foo\\x0d\\x0abar") == "foo\r\nbar");
 
-  CHECK(byte_escape("foo", true) == "\\x66\\x6f\\x6f");
+  CHECK(byte_escape_all("foo") == "\\x66\\x6f\\x6f");
   CHECK(byte_unescape("\\x66\\x6f\\x6f") == "foo");
+
+  CHECK(byte_unescape("foo\\") == ""); // Invalid '/' at end of string.
 }
 
-TEST(JSON string escaping)
-{
+TEST(JSON string escaping) {
   CHECK(json_escape("") == "\"\"");
   CHECK(json_escape("\r") == "\"\\r\"");
   CHECK(json_escape("\r\n") == "\"\\r\\n\"");
@@ -40,16 +44,16 @@ TEST(JSON string escaping)
   CHECK(json_unescape("\"\\r\\n\"") == "\r\n");
   CHECK(json_unescape("\"\\begin\"") == "\begin");
   CHECK(json_unescape("\"end\\n\"") == "end\n");
-  CHECK(json_unescape("\"end\\uaaaa\"")  == "end\\uaaaa");
+  CHECK(json_unescape("\"end\\uaaaa\"") == "end\\uaaaa");
 
   CHECK(json_escape("foo\"bar") == "\"foo\\\"bar\"");
   CHECK(json_escape("foo\\bar") == "\"foo\\\\bar\"");
-  CHECK(json_escape("foo/bar")  == "\"foo\\/bar\"");
   CHECK(json_escape("foo\bbar") == "\"foo\\bbar\"");
   CHECK(json_escape("foo\fbar") == "\"foo\\fbar\"");
   CHECK(json_escape("foo\rbar") == "\"foo\\rbar\"");
   CHECK(json_escape("foo\nbar") == "\"foo\\nbar\"");
   CHECK(json_escape("foo\tbar") == "\"foo\\tbar\"");
+  CHECK(json_escape("foo\xFF\xFF") == "\"foo\\xff\\xff\"");
 
   CHECK(json_unescape("\"foo\\\"bar\"") == "foo\"bar");
   CHECK(json_unescape("\"foo\\\\bar\"") == "foo\\bar");
@@ -60,6 +64,7 @@ TEST(JSON string escaping)
   CHECK(json_unescape("\"foo\\nbar\"")  == "foo\nbar");
   CHECK(json_unescape("\"foo\\tbar\"")  == "foo\tbar");
   CHECK(json_unescape("\"foo\\uaaaabar\"")  == "foo\\uaaaabar");
+  CHECK(json_unescape("\"foo\\xFF\\xFF\"") == "foo\xFF\xFF");
 
   // Invalid.
   CHECK(json_unescape("unquoted") == "");
@@ -68,8 +73,7 @@ TEST(JSON string escaping)
   CHECK(json_unescape("\"unescaped\"quote\"") == "");
 }
 
-TEST(string splitting and joining)
-{
+TEST(string splitting and joining) {
   using namespace std::string_literals;
 
   auto s = split_to_str("Der Geist, der stets verneint."s, " ");

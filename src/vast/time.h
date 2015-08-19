@@ -4,10 +4,6 @@
 #include <chrono>
 #include <string>
 
-#include "vast/fwd.h"
-#include "vast/convert.h"
-#include "vast/parse.h"
-#include "vast/print.h"
 #include "vast/util/operators.h"
 
 namespace vast {
@@ -37,10 +33,11 @@ using stopwatch = std::chrono::steady_clock;
 using moment = stopwatch::time_point;
 using extent = stopwatch::duration;
 
-inline moment snapshot()
-{
+inline moment snapshot() {
   return stopwatch::now();
 }
+
+using std::chrono::duration_cast;
 
 // Currently unused.
 class interval;
@@ -50,8 +47,7 @@ class perdiod;
 point now();
 
 /// A time duration with nanosecond granularity.
-class duration : util::totally_ordered<duration>
-{
+class duration : util::totally_ordered<duration> {
   friend access;
   friend class point;
 
@@ -72,8 +68,7 @@ public:
   /// @param dur A `std::chrono::duration<Rep, Period>`.
   template <typename Rep, typename Period>
   duration(std::chrono::duration<Rep, Period> dur)
-    : duration_{std::chrono::duration_cast<duration_type>(dur).count()}
-  {
+    : duration_{std::chrono::duration_cast<duration_type>(dur).count()} {
   }
 
   // Arithmetic operators.
@@ -124,10 +119,6 @@ public:
   // @returns This duration in nanoseconds.
   rep nanoseconds() const;
 
-  friend trial<void> convert(duration tr, double& d);
-  friend trial<void> convert(duration tr, duration_type& dur);
-  friend trial<void> convert(duration tr, util::json& j);
-
 private:
   duration_type duration_{0};
 };
@@ -135,14 +126,12 @@ private:
 /// Constructs a second duration.
 /// @param f The number of fractional seconds.
 /// @returns A duration of *f* fractional seconds.
-inline duration fractional(double f)
-{
+inline duration fractional(double f) {
   return double_seconds{f};
 }
 
 /// An absolute point in time having UTC time zone.
-class point : util::totally_ordered<point>
-{
+class point : util::totally_ordered<point> {
   friend access;
 
 public:
@@ -157,12 +146,8 @@ public:
   static point from_tm(std::tm const& tm);
 
   /// Constructs a UTC time point.
-  static point utc(int year,
-                   int month = 0,
-                   int day = 0,
-                   int hour = 0,
-                   int min = 0,
-                   int sec = 0);
+  static point utc(int year, int month = 0, int day = 0, int hour = 0,
+                   int min = 0, int sec = 0);
 
   /// Constructs a time point with the UNIX epoch.
   point() = default;
@@ -170,8 +155,7 @@ public:
   /// Constructs a time point from a `std::chrono::time_point`.
   template <typename Clock, typename Duration>
   point(std::chrono::time_point<Clock, Duration> tp)
-    : time_point_{std::chrono::time_point_cast<duration_type>(tp)}
-  {
+    : time_point_{std::chrono::time_point_cast<duration_type>(tp)} {
   }
 
   /// Creates a time point from a duration.
@@ -203,28 +187,15 @@ public:
   /// @param months The months to to add/subtract.
   /// @param years The years to to add/subtract.
   /// @returns The relative time from now according to the unit specifications.
-  point delta(int secs = 0,
-              int mins = 0,
-              int hours = 0,
-              int days = 0,
-              int months = 0,
-              int years = 0);
+  point delta(int secs = 0, int mins = 0, int hours = 0, int days = 0,
+              int months = 0, int years = 0);
 
   /// Returns a duration representing the duration since the UNIX epoch.
   duration time_since_epoch() const;
 
-  friend trial<void> convert(point p, double& d);
-  friend trial<void> convert(point p, std::tm& tm);
-  friend trial<void> convert(point p, util::json& j);
-
 private:
   time_point_type time_point_;
 };
-
-// This remains outside because friend functions with default arguments must
-// come with a direct definition, no declarations allowed.
-trial<void> convert(point p, std::string& str,
-                    char const* fmt = point::format);
 
 /// Determines whether a given year is a leap year.
 /// @param year The year to check.
@@ -256,7 +227,7 @@ time_t to_time_t(std::tm const& t);
 std::tm make_tm();
 
 /// Propagates underflowed and overflowed values up to the next higher unit.
-void propagate(std::tm &t);
+void propagate(std::tm& t);
 
 /// Parses a string into a `std::tm` structure.
 /// @param str The string to parse.
@@ -265,143 +236,7 @@ void propagate(std::tm &t);
 /// @returns The `std::tm` structure corresponding to *str*.
 std::tm to_tm(std::string const& str, char const* fmt, char const* locale);
 
-//
-// Concepts
-//
-
-template <typename Iterator>
-trial<void> print(duration d, Iterator&& out, bool adaptive = true)
-{
-  using util::print;
-  if (adaptive)
-  {
-    auto cnt = d.count();
-    if (cnt > 1000000000)
-    {
-      print_numeric(cnt / 1000000000, out);
-      print('.', out);
-      print_numeric((cnt % 1000000000) / 10000000, out);
-      print("s", out);
-    }
-    else if (cnt > 1000000)
-    {
-      print_numeric(cnt / 1000000, out);
-      print('.', out);
-      print_numeric((cnt % 1000000) / 10000, out);
-      print("ms", out);
-    }
-    else if (cnt > 1000)
-    {
-      print_numeric(cnt / 1000, out);
-      print("us", out);
-    }
-    else
-    {
-      print_numeric(cnt, out);
-      print("ns", out);
-    }
-  }
-  else
-  {
-    print(d.double_seconds(), out);
-    print('s', out);
-  }
-  return nothing;
-}
-
-template <typename Iterator>
-trial<void> print(point p, Iterator&& out, char const* fmt = point::format)
-{
-  using util::print;
-  std::string str;
-  auto t = convert(p, str, fmt);
-  if (t)
-    return print(str, out);
-  else
-    return t.error();
-}
-
-template <typename Iterator>
-trial<void> parse(duration& dur, Iterator& begin, Iterator end)
-{
-  bool is_double;
-  auto d = util::parse<double>(begin, end, &is_double);
-  if (! d)
-    return d.error();
-  if (is_double)
-  {
-    dur = fractional(*d);
-    return nothing;
-  }
-  duration::rep i = *d;
-  if (begin == end)
-  {
-    dur = seconds(i);
-    return nothing;
-  }
-  switch (*begin++)
-  {
-    default:
-      return error{"invalid unit: ", *begin};
-    case 'n':
-      if (begin != end && *begin++ == 's')
-        dur = nanoseconds(i);
-      break;
-    case 'u':
-      if (begin != end && *begin++ == 's')
-        dur = microseconds(i);
-      break;
-    case 'm':
-      if (begin != end && *begin++ == 's')
-        dur = milliseconds(i);
-      else
-        dur = minutes(i);
-      break;
-    case 's':
-      dur = seconds(i);
-      break;
-    case 'h':
-      dur = hours(i);
-      break;
-  }
-  return nothing;
-}
-
-template <typename Iterator>
-trial<void> parse(point& p, Iterator& begin, Iterator end,
-                  char const* fmt = nullptr,
-                  char const* locale = nullptr)
-{
-  if (fmt)
-  {
-    std::string str{begin, end};
-    begin = end;
-    p = std::chrono::system_clock::from_time_t(
-        to_time_t(to_tm(str, fmt, locale)));
-  }
-  else
-  {
-    duration d;
-    auto t = parse(d, begin, end);
-    if (! t)
-      return t.error();
-    p = d;
-  }
-  return nothing;
-}
-
 } // namespace time
 } // namespace vast
-
-// We put this overload in namespace std so that ADL can find it.
-namespace std {
-
-template <typename Rep, typename Period, typename Iterator>
-vast::trial<void> print(std::chrono::duration<Rep, Period> d, Iterator&& out)
-{
-  return print(vast::time::duration{d}, out);
-}
-
-} // namespace std
 
 #endif

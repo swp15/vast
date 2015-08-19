@@ -1,8 +1,7 @@
-#include "vast/util/string.h"
-
 #include <vector>
 
 #include "vast/util/coding.h"
+#include "vast/util/string.h"
 
 namespace vast {
 namespace util {
@@ -13,84 +12,114 @@ static constexpr char hex[] = "0123456789abcdef";
 
 } // namespace <anonymous>
 
-std::string byte_escape(std::string const& str, bool all)
-{
-  if (str.empty())
-    return {};
+std::string byte_escape(std::string const& str) {
   std::string esc;
-  if (all)
-  {
-    esc.resize(str.size() * 4);
-    std::string::size_type i = 0;
-    for (auto c : str)
-    {
-      esc[i++] = '\\';
-      esc[i++] = 'x';
-      esc[i++] = hex[(c & 0xf0) >> 4];
-      esc[i++] = hex[c & 0x0f];
+  esc.reserve(str.size());
+  for (auto c : str)
+    if (std::isprint(c)) {
+      esc += c;
+    } else {
+      esc += '\\';
+      esc += 'x';
+      esc += hex[(c & 0xf0) >> 4];
+      esc += hex[c & 0x0f];
     }
-  }
-  else
-  {
-    esc.reserve(str.size());
-    for (auto c : str)
-      if (std::isprint(c))
-      {
-        esc += c;
-      }
-      else
-      {
+  return esc;
+}
+
+std::string byte_escape(std::string const& str, std::string const& extra) {
+  std::string esc;
+  esc.reserve(str.size());
+  for (auto c : str)
+    if (std::isprint(c)) {
+      if (extra.find(c) != std::string::npos)
         esc += '\\';
-        esc += 'x';
-        esc += hex[(c & 0xf0) >> 4];
-        esc += hex[c & 0x0f];
-      }
+      esc += c;
+    } else {
+      esc += '\\';
+      esc += 'x';
+      esc += hex[(c & 0xf0) >> 4];
+      esc += hex[c & 0x0f];
+    }
+  return esc;
+}
+
+std::string byte_escape_all(std::string const& str) {
+  std::string esc;
+  esc.resize(str.size() * 4);
+  auto i = std::string::size_type{0};
+  for (auto c : str) {
+    esc[i++] = '\\';
+    esc[i++] = 'x';
+    esc[i++] = hex[(c & 0xf0) >> 4];
+    esc[i++] = hex[c & 0x0f];
   }
   return esc;
 }
 
-std::string byte_unescape(std::string const& str)
-{
+std::string byte_unescape(std::string const& str) {
   std::string unesc;
   auto i = str.begin();
-  while (str.end() - i > 3)
-  {
-    if (*i == '\\' && i[1] == 'x' && std::isxdigit(i[2]) && std::isxdigit(i[3]))
-    {
-      unesc += hex_to_byte(i[2], i[3]);
-      i += 4;
-    }
-    else
-    {
-      unesc += *i++;
+  auto last = str.end();
+  while (i != last) {
+    auto c = *i++;
+    if (c != '\\') {
+      unesc += c;
+    } else if (i == last) {
+      return {}; // malformed string with dangling '\' at the end.
+    } else {
+      switch ((c = *i++)) {
+        default:
+          unesc += c;
+          break;
+        case 'x':
+          if (i != last && i + 1 != last && std::isxdigit(i[0])
+              && std::isxdigit(i[1])) {
+            auto hi = *i++;
+            auto lo = *i++;
+            unesc += hex_to_byte(hi, lo);
+          } else {
+            unesc += 'x';
+          }
+          break;
+      }
     }
   }
-  std::copy(i, str.end(), std::back_inserter(unesc));
   return unesc;
 }
 
-std::string json_escape(std::string const& str)
-{
+std::string json_escape(std::string const& str) {
   if (str.empty())
     return "\"\"";
   std::string esc;
-  esc.reserve(str.size());
+  esc.reserve(str.size() + 2);
   esc += '"';
-  for (auto c : str)
-  {
-    switch (c)
-    {
+  // The JSON RFC (http://www.ietf.org/rfc/rfc4627.txt) specifies the escaping
+  // rules in section 2.5:
+  //
+  //    All Unicode characters may be placed within the quotation marks except
+  //    for the characters that must be escaped: quotation mark, reverse
+  //    solidus, and the control characters (U+0000 through U+001F).
+  //
+  //  That is, '"', '\\', and control characters are the only mandatory escaped
+  //  values. The rest is optional.
+  for (auto c : str) {
+    switch (c) {
       default:
-        esc += c;
+        if (std::isprint(c)) {
+          esc += c;
+        } else {
+          esc += '\\';
+          esc += 'x';
+          esc += hex[(c & 0xf0) >> 4];
+          esc += hex[c & 0x0f];
+        }
         break;
       case '"':
         esc += "\\\"";
         break;
       case '\\':
         esc += "\\\\";
-        break;
-      case '/':
-        esc += "\\/";
         break;
       case '\b':
         esc += "\\b";
@@ -113,33 +142,30 @@ std::string json_escape(std::string const& str)
   return esc;
 }
 
-std::string json_unescape(std::string const& str)
-{
+std::string json_unescape(std::string const& str) {
   std::string unesc;
   if (str.empty() || str.size() < 2)
     return {};
-  // Only consider doulbe-quote strings.
-  if (! (str.front() == '"' && str.back() == '"'))
+  // Only consider double-quote strings.
+  if (!(str.front() == '"' && str.back() == '"'))
     return {};
   unesc.reserve(str.size());
   std::string::size_type i = 1;
   std::string::size_type last = str.size() - 1;
   // Skip the opening double quote.
   // Unescape everything until the closing double quote.
-  while (i < last)
-  {
+  while (i < last) {
     auto c = str[i++];
-    if (c == '"')   // Unescaped double-quotes not allowed.
+    if (c == '"') // Unescaped double-quotes not allowed.
       return {};
-    if (c != '\\')  // Skip everything non-escpaed character.
+    if (c != '\\') // Skip everything non-escpaed character.
     {
       unesc += c;
       continue;
     }
-    if (i == last)  // No '\' before final double quote allowed.
+    if (i == last) // No '\' before final double quote allowed.
       return {};
-    switch (str[i++])
-    {
+    switch (str[i++]) {
       default:
         return {};
       case '\\':
@@ -166,15 +192,24 @@ std::string json_unescape(std::string const& str)
       case 't':
         unesc += '\t';
         break;
-      case 'u':    // We can't handle unicode and leave \uXXXX as is.
-        {
-          unesc += '\\';
-          unesc += 'u';
-          auto end = std::min(std::string::size_type{4}, last - i);
-          for (std::string::size_type j = 0; j < end; ++j)
-            unesc += str[i++];
+      case 'u': // We can't handle unicode and leave \uXXXX as is.
+      {
+        unesc += '\\';
+        unesc += 'u';
+        auto end = std::min(std::string::size_type{4}, last - i);
+        for (std::string::size_type j = 0; j < end; ++j)
+          unesc += str[i++];
+      } break;
+      case 'x':
+        if (i + 1 < last) {
+          auto hi = str[i++];
+          auto lo = str[i++];
+          if (std::isxdigit(hi) && std::isxdigit(lo)) {
+            unesc += hex_to_byte(hi, lo);
+            break;
+          }
         }
-        break;
+        return {}; // \x must be followed by two hex bytes.
     }
   }
   VAST_ASSERT(i == last);

@@ -1,12 +1,9 @@
 #include "vast/operator.h"
-#include "vast/logger.h"
 
 namespace vast {
 
-relational_operator negate(relational_operator op)
-{
-  switch (op)
-  {
+relational_operator negate(relational_operator op) {
+  switch (op) {
     default:
       throw std::logic_error("missing case for relational operator");
     case match:
@@ -36,10 +33,8 @@ relational_operator negate(relational_operator op)
   }
 }
 
-relational_operator flip(relational_operator op)
-{
-  switch (op)
-  {
+relational_operator flip(relational_operator op) {
+  switch (op) {
     default:
       throw std::logic_error("missing case for relational operator");
     case match:

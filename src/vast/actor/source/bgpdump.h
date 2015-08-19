@@ -8,8 +8,7 @@ namespace vast {
 namespace source {
 
 /// A source reading ASCII output from the BGPDump utility.
-class bgpdump : public line_based<bgpdump>
-{
+class bgpdump : public line_based<bgpdump> {
 public:
   /// Spawns a BGPDump source.
   /// @param is The input stream to read BGPDump data logs from.
@@ -22,11 +21,6 @@ public:
   result<event> extract();
 
 private:
-  std::string separator_ = "|";
-  std::string set_separator_;
-  std::string empty_field_;
-  std::string unset_field_;
-
   type announce_type_;
   type route_type_;
   type withdraw_type_;
