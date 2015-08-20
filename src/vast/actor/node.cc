@@ -489,7 +489,7 @@ behavior node::spawn_actor(event_based_actor* self) {
       on("http_broker", any_vals) >> [&]
       {
         auto port = uint16_t{8888};
-        auto r = self->current_message().drop(1).extract_opts({
+        auto r = self->current_message().extract_opts({
           {"port,p", "the port to listen on", port}
         });
         if (!r.error.empty())
@@ -500,13 +500,12 @@ behavior node::spawn_actor(event_based_actor* self) {
         }
         auto broker = spawn_io_server(http_broker_function, port, this);
         if (!broker) {
-          rp.deliver(make_message(std::move(snk.error())));
+          //rp.deliver(make_message(std::move(broker.error())));
           self->quit(exit::error);
           return;
         }
         VAST_DEBUG(this, "spawned HTTP broker");
-        self->send(*broker, put_atom::value, accountant_atom::value, accountant_);
-        save_actor(*broker, "http_broker");
+        save_actor(broker, "http_broker");
       },
       others >> [=] {
         auto syntax = "spawn <actor> [params]";

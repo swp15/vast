@@ -4,10 +4,10 @@
 #include <map>
 #include <string>
 #include <vector>
-#include "vast/util/none.h"
-#include "vast/util/print.h"
+
+#include "vast/none.h"
+#include "vast/concept/printable/to.h"
 #include "vast/util/operators.h"
-#include "vast/util/string.h"
 #include "vast/util/variant.h"
 
 namespace vast {
