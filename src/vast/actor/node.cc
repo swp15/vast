@@ -486,7 +486,7 @@ behavior node::spawn_actor(event_based_actor* self) {
         self->quit(exit::error);
 #endif
       },
-      on("http_broker", any_vals) >> [&]
+      on("http_broker", any_vals) >> [=]
       {
         auto port = uint16_t{8888};
         auto r = self->current_message().extract_opts({

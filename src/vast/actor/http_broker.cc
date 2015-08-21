@@ -11,6 +11,7 @@
 #include "vast/concept/printable/print.h"
 #include "vast/concept/printable/vast/event.h"
 #include "vast/concept/printable/vast/json.h"
+#include "vast/concept/printable/vast/uuid.h"
 
 #include "vast/event.h"
 #include "vast/uuid.h"
@@ -90,10 +91,11 @@ bool handle(event const& e, broker* self, connection_handle hdl)
     return false;
 
   event_counter++;
-  //auto content = to_string(*j, true);
-  //content += "\r\n";
-  //self->write(hdl, content.size(), content.c_str());
-  //self->flush(hdl);
+  auto content = to_string(j);
+  VAST_DEBUG(self, "event", content);
+  content += "\r\n";
+  self->write(hdl, content.size(), content.c_str());
+  self->flush(hdl);
   return true;
 }
 
@@ -172,8 +174,8 @@ behavior connection_worker(broker* self, connection_handle hdl, actor const& nod
     },
     [=](uuid const& id, progress_atom, double progress, uint64_t total_hits)
     {
-      //VAST_VERBOSE(self, "got progress from query ", id << ':',
-      //             total_hits, "hits (" << size_t(progress * 100) << "%)");
+      VAST_VERBOSE(self, "got progress from query ", id << ':',
+                   total_hits, "hits (" << size_t(progress * 100) << "%)");
       auto progress_json = "{\n  \"progress\": "s;
       progress_json += std::to_string(progress);
       progress_json += ",\n  \"event_counter\": ";
@@ -186,7 +188,7 @@ behavior connection_worker(broker* self, connection_handle hdl, actor const& nod
     },
     [=](uuid const& id, done_atom, time::extent runtime)
     {
-      //VAST_VERBOSE(self, "got DONE from query", id << ", took", runtime);
+      VAST_VERBOSE(self, "got DONE from query", id << ", took", runtime);
       auto progress_json = "{\n  \"state\": \"DONE\""s;
       progress_json += ",\n  \"progress\": 1.0";
       progress_json += ",\n  \"event_counter\": ";
