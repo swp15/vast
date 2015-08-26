@@ -58,8 +58,8 @@ void setup_exporter(broker* self, util::http_url url, actor const& node, std::st
   }
   if (url.contains_option("limit"))
   {
-    mb.append("-l " + url.Options("limit"));
-    VAST_DEBUG("add limit ", url.Options("limit"));
+    mb.append("-e " + url.Options("limit"));
+    VAST_DEBUG("add limit", url.Options("limit"));
   }
   mb.append(url.Options("query"));
   self->send(node, mb.to_message());
@@ -79,7 +79,9 @@ void setup_exporter(broker* self, util::http_url url, actor const& node, std::st
   self->send(node, mb.to_message());
 
   mb.clear();
+  mb.append(store_atom::value);
   mb.append(get_atom::value);
+  mb.append(actor_atom::value);
   mb.append(exporter_label);
   self->send(node, mb.to_message());
 }

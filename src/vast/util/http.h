@@ -53,6 +53,16 @@ public:
   {
     return header_[key];
   }
+  
+  std::string Body()
+  {
+    return body_;
+  }
+  
+  void set_Body(std::string body)
+  {
+    body_ = body;
+  }
 
   void add_header_field(std::string key, std::string value)
   {
@@ -64,6 +74,7 @@ private:
   std::string url_;
   std::string http_version_;
   std::map<std::string, std::string> header_;
+  std::string body_;
 
 };
 

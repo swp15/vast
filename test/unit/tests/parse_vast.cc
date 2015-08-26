@@ -9,6 +9,8 @@
 #include "vast/concept/printable/to_string.h"
 #include "vast/concept/printable/vast/pattern.h"
 #include "vast/concept/printable/vast/address.h"
+#include "vast/concept/parseable/vast/http.h"
+
 
 #define SUITE parseable
 #include "test.h"
@@ -218,4 +220,38 @@ TEST(offset) {
   offset o;
   CHECK(parsers::offset("1,2,3", o));
   CHECK(o == offset{1, 2, 3});
+}
+
+TEST(http_parser)
+{
+  auto p = vast::http_parser{};
+  auto str = "GET /test/path/ HTTP/1.1\r\nContent-Type:text/html\r\nContent-Length:1234\r\n\r\nBody "s;
+  auto f = str.begin();
+  auto l = str.end();
+  util::http_request got;
+  CHECK(p.parse(f, l, got));
+  CHECK(got.Method() == "GET");
+  CHECK(got.URL() == "/test/path/");
+  CHECK(got.HTTP_version() == "HTTP/1.1");
+  CHECK(got.Header("Content-Type") == "text/html");
+  CHECK(got.Header("Content-Length") == "1234");
+  CHECK(got.Body() == "Body ");
+  CHECK(f == l);
+}
+
+TEST(url_parser)
+{
+  auto p = vast::url_parser{};
+  util::http_url got;
+  auto str = "/test/path/foo?opt1=foobar&opt2=test"s;
+  //auto str = "/test/path?option=test"s;
+  auto f = str.begin();
+  auto l = str.end();
+  CHECK(p.parse(f, l, got));
+  CHECK(got.Path()[0] == "test");
+  CHECK(got.Path()[1] == "path");
+  CHECK(got.Path()[2] == "foo");
+  CHECK(got.Options("opt1") == "foobar");
+  CHECK(got.Options("opt2") == "test");
+  CHECK(f == l);
 }
