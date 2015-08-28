@@ -12,6 +12,7 @@
 #include "vast/concept/printable/vast/event.h"
 #include "vast/concept/printable/vast/json.h"
 #include "vast/concept/printable/vast/uuid.h"
+#include "vast/concept/printable/vast/http.h"
 
 #include "vast/event.h"
 #include "vast/uuid.h"
@@ -29,11 +30,16 @@ uint64_t event_counter = 0;
 
 std::string create_response_header()
 {
-  auto response = "HTTP/1.1 200 OK\r\n"s;
+/*  auto response = "HTTP/1.1 200 OK\r\n"s;
   response += "Content-Type: application/json\r\n";
   response += "Access-Control-Allow-Origin: *\r\n";
   response += "\r\n";
   return response;
+  */
+  util::http_response response;
+  response.add_header_field("Content-Type", "application/json");
+  response.add_header_field("Access-Control-Allow-Origin", "*");
+  return to_string(response);
 }
 
 void setup_exporter(broker* self, util::http_url url, actor const& node, std::string exporter_label){
