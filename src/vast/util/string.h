@@ -52,16 +52,16 @@ std::string json_escape(std::string const& str);
 /// @relates json_escape
 std::string json_unescape(std::string const& str);
 
-/// Escapes a string according to URL escaping.
-/// @param str The string to escape.
-/// @returns The escaped string.
-/// @relates url_unescape
-std::string url_unescape(std::string const& str);
-
 /// Unescapes a string escaped with URL escaping.
 /// @param str The string to unescape.
 /// @returns The unescaped string.
 /// @relates url_escape
+std::string url_unescape(std::string const& str);
+
+/// Escapes a string according to URL escaping.
+/// @param str The string to escape.
+/// @returns The escaped string.
+/// @relates url_unescape
 std::string url_escape(std::string const& str);
 
 /// Splits a string into a vector of iterator pairs representing the

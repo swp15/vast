@@ -126,3 +126,20 @@ TEST(string splitting and joining) {
   str = join(s, " ");
   CHECK(str == "a - b - c*-d");
 }
+
+TEST(URI escaping) {  
+  CHECK(url_escape("&text") == "%26text");
+  CHECK(url_unescape("%26text") == "&text");
+  CHECK(url_escape("text<") == "text%3C");
+  CHECK(url_unescape("text%3C") == "text<");
+  
+  CHECK(url_escape("ABC") == "ABC");
+  CHECK(url_escape("\xFF") == "%FF");
+  CHECK(url_unescape("%FF") == "\xFF");
+  CHECK(url_unescape("%ff") == "\xFF");
+  // unsafe chars test, RFC1738
+  const std::string UNSAFE(" <>#{}|\\^~[]`");
+  std::string unsafe_enc = url_escape(UNSAFE);
+  CHECK(std::string::npos == unsafe_enc.find_first_of(UNSAFE));
+  CHECK(url_unescape(unsafe_enc) == UNSAFE);
+}
